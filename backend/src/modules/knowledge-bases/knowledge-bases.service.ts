@@ -7,6 +7,8 @@ import {
 } from '@nestjs/common';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import { Model, Types, type Connection } from 'mongoose';
+import { Article } from '../../common/mongo/schemas/article.schema';
+import { ArticleVersion } from '../../common/mongo/schemas/article-version.schema';
 import { Category } from '../../common/mongo/schemas/category.schema';
 import { KbMember } from '../../common/mongo/schemas/kb-member.schema';
 import { KnowledgeBase } from '../../common/mongo/schemas/knowledge-base.schema';
@@ -44,6 +46,8 @@ export class KnowledgeBasesService {
     @InjectModel(KnowledgeBase.name) private readonly kbModel: Model<KnowledgeBase>,
     @InjectModel(KbMember.name) private readonly kbMemberModel: Model<KbMember>,
     @InjectModel(Category.name) private readonly categoryModel: Model<Category>,
+    @InjectModel(Article.name) private readonly articleModel: Model<Article>,
+    @InjectModel(ArticleVersion.name) private readonly articleVersionModel: Model<ArticleVersion>,
     @InjectModel(User.name) private readonly userModel: Model<User>,
     @InjectModel(Membership.name) private readonly membershipModel: Model<Membership>,
   ) {}
@@ -205,9 +209,8 @@ export class KnowledgeBasesService {
   }
 
   /**
-   * Deletes a KB with its members + categories in one transaction.
-   * Articles/versions/attachments cascade lands with Phase 4 (no article
-   * rows can exist yet); documents are org-owned and always retained.
+   * Deletes a KB with its members + categories + articles + versions in one
+   * transaction. Documents are org-owned and always retained.
    */
   async remove(orgId: string, userId: string, orgRole: string, kbIdOrSlug: string, confirm?: string): Promise<void> {
     if (confirm !== 'true') {
@@ -216,6 +219,15 @@ export class KnowledgeBasesService {
     const access = await this.requireAccess(orgId, userId, orgRole, kbIdOrSlug);
     this.requireManager(access);
     await withTransaction(this.connection, async (tx) => {
+      const articleIds = await this.articleModel
+        .find({ knowledgeBaseId: access.kbId }, { _id: 1 })
+        .session(tx)
+        .lean();
+      const ids = articleIds.map((a) => a._id);
+      if (ids.length > 0) {
+        await this.articleVersionModel.deleteMany({ articleId: { $in: ids } }, { session: tx });
+      }
+      await this.articleModel.deleteMany({ knowledgeBaseId: access.kbId }, { session: tx });
       await this.kbMemberModel.deleteMany({ knowledgeBaseId: access.kbId }, { session: tx });
       await this.categoryModel.deleteMany({ knowledgeBaseId: access.kbId }, { session: tx });
       await this.kbModel.deleteOne({ _id: access.kbId }, { session: tx });

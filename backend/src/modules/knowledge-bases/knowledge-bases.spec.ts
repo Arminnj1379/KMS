@@ -1,6 +1,8 @@
 import { ForbiddenException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import type { Connection } from 'mongoose';
 import { Model, Types } from 'mongoose';
+import type { Article } from '../../common/mongo/schemas/article.schema';
+import type { ArticleVersion } from '../../common/mongo/schemas/article-version.schema';
 import type { Category } from '../../common/mongo/schemas/category.schema';
 import type { KbMember } from '../../common/mongo/schemas/kb-member.schema';
 import type { KnowledgeBase } from '../../common/mongo/schemas/knowledge-base.schema';
@@ -78,17 +80,25 @@ function makeDeps(): Deps {
   const cats_ = makeModelMock();
   const users = makeModelMock();
   const memberships = makeModelMock();
+  const articles = makeModelMock();
+  articles.find.mockReturnValue(q([]));
+  articles.deleteMany.mockResolvedValue({});
+  const articleVersions = makeModelMock();
+  articleVersions.deleteMany.mockResolvedValue({});
   const kbs = new KnowledgeBasesService(
     makeTx(),
     kbs_ as unknown as Model<KnowledgeBase>,
     members as unknown as Model<KbMember>,
     cats_ as unknown as Model<Category>,
+    articles as unknown as Model<Article>,
+    articleVersions as unknown as Model<ArticleVersion>,
     users as unknown as Model<User>,
     memberships as unknown as Model<Membership>,
   );
   const cats = new CategoriesService(
     makeTx(),
     cats_ as unknown as Model<Category>,
+    makeModelMock() as unknown as Model<Article>,
     kbs,
   );
   return { kbs, cats, kbs_, members, cats_, users, memberships };

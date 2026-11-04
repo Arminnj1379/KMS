@@ -2,7 +2,7 @@
 
 > Updated after every phase (see task §10). Legend: ✅ done · 🟡 partial · ⬜ not started · 🛑 blocked.
 
-## Current: Phase 3 ✅ complete — next: Phase 4 Articles
+## Current: Phase 4 ✅ complete — next: Phase 5 Documents & Versioning
 
 | Phase | Status | Notes |
 |---|---|---|
@@ -11,8 +11,7 @@
 | 2 Identity & Access | ✅ | Backend: identity/users/orgs/permissions modules, global JWT+roles+throttle guards. Frontend: login/register/profile/admin, RequireAuth, 401 interceptor. |
 | PG → Mongo migration | ✅ | Mongoose 8 + MongoDB 8 (rs0) is the only app DB. Prisma/Postgres removed; 24/24 smoke + 28/28 tests green on Mongo. |
 | 3 KB Foundation | ✅ | Backend: KB CRUD + members + nested categories (cycle-safe, org-isolated). Frontend: KB list/detail + category tree + member management. |
-| 3 KB Foundation | ⬜ | — |
-| 4 Articles | ⬜ | — |
+| 4 Articles | ✅ | Backend: articles CRUD + optimistic 409 + tags + related + publish/archive state machine (org-isolated). Frontend: Tiptap editor + autosave + conflict dialog, list/view pages. |
 | 5 Documents & Versioning | ⬜ | — |
 | 6 Approval Workflow | ⬜ | — |
 | 7 Search | ⬜ | — |
@@ -64,6 +63,16 @@
   - `tsc --noEmit` clean (api+web); backend `eslint` clean; `nest build` + `vite build` pass.
   - live smoke vs compose Mongo (23 checks): create (manager) / slug-dup-409 / invite / private-hidden-from-nonmember / private-direct-404 / add-reader / reader-visible / reader-create-cat-403 / root+child / tree-shape / cycle-422 / nonempty-422 / reader-update-403 / cross-org-404 / no-confirm-422 / delete-204 + gone/members/cats-404. Three initial harness FAILs re-run correctly (PS5 `.Count`/`StatusCodeVariable` artifacts, app behavior proven correct).
 - Test data in dev Mongo only (`p3-*` KBs/users). Next: Phase 4 Articles.
+
+## Phase 4 — completed 2026-11-04 ✅
+- Backend `articles` module (routes `knowledge-bases/:kbId/articles`): create draft (Tiptap `type:doc` validated, `contentText` auto-derived, slug unique per KB, tags upserted org-wide + deduped, category must belong to KB), optimistic-concurrency update (stale `version` → 409 carrying the current doc for the conflict dialog), soft-delete, publish/unpublish/archive/restore with legal-transition 422s, paginated list (status/category±subtree/tag/`$text` search/author filters), related (shared tags/category, published only), per-KB tag cloud with counts. Permissions: read = any KB-visible member; write = manager/contributor/org-admin (403); transitions + delete = manager/org-admin; cross-KB/org ids → 404 (no leak).
+- KB delete now cascades articles + versions in the same transaction (documents retained); category delete rejects when non-empty **or** referenced by articles (422).
+- Frontend: `/kbs/:kbId/articles` list (status/search/tag filters, manager delete), `/new` + `/:articleId/edit` Tiptap editor (toolbar, 3s-debounce autosave with saved-indicator, 409 conflict dialog with reload-server / overwrite-with-mine), `/:articleId` view (read-only Tiptap renderer, status actions, related links, view-count), KB detail links to the article list, fa/en strings.
+- Verification (all green, executed 2026-11-04):
+  - unit: **44/44** (incl. 8 new article rule tests: reader-403, invalid-doc 422, slug-dup 409, stale-409 with current payload, version bump, publish-422, cross-category 404, missing 404).
+  - `tsc --noEmit` clean (api+web); backend `eslint` clean; `nest build` + `vite build` pass; `docker compose config` valid.
+  - live smoke vs compose Mongo (29 checks): login/kb-create/bad-doc-422/create-v1-draft/slug-dup-409/reader-add/reader-create-403/reader-list/get-by-slug+viewCount/stale-409/update-v2/reader-update-403/reader-publish-403/publish/double-publish-422/second-create/related-empty/related-shared-tag/tags-with-counts/cross-org-404/set-category/cat-with-article-422/archive/restore/unpublish/unpublish-again-422/KB-cascade-delete + articles/members-404. Three initial FAILs re-run correctly (harness path typos missing `/articles/`, app behavior proven correct).
+- Test data in dev Mongo only (`p4-*` users/KBs; cascade test deleted `p4-kb`). Debt: frontend bundle ~711kB (Tiptap; code-split deferred to Phase 9); search is keyword `$text` only (full search UI lands in Phase 7); versions insert-only snapshots land in Phase 5 (version counter already monotonic). Next: Phase 5 Documents & Versioning.
 - [ ] Root: `docker-compose.yml`, `.env.example`, `.gitignore`, `README.md`, `package.json` (workspaces).
 - [ ] Backend scaffold + strict TS + lint + env + logging + filters + health + swagger + Prisma schema/seed.
 - [ ] Frontend scaffold + Tailwind + Router + Query + i18n + AppShell.

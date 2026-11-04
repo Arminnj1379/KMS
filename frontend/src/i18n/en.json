@@ -82,5 +82,33 @@
     "subtitle": "Overview of knowledge bases and recent activity",
     "connected": "Backend connected",
     "disconnected": "Backend unreachable"
+  },
+  "article": {
+    "listTitle": "Articles",
+    "create": "New article",
+    "edit": "Edit article",
+    "backToArticles": "Back to articles",
+    "searchPh": "Search title and text…",
+    "searchBtn": "Search",
+    "allStatuses": "All statuses",
+    "allTags": "All tags",
+    "noCategory": "Uncategorized",
+    "tagsPh": "Tags (comma-separated)",
+    "status_draft": "Draft",
+    "status_in_review": "In review",
+    "status_published": "Published",
+    "status_archived": "Archived",
+    "publish": "Publish",
+    "unpublish": "Unpublish to draft",
+    "archive": "Archive",
+    "restore": "Restore",
+    "related": "Related articles",
+    "views": "Views",
+    "saving": "Saving…",
+    "autosaved": "Last autosave",
+    "conflictTitle": "The article changed on the server",
+    "conflictBody": "Someone else edited this article. You can reload the server copy or overwrite it with yours.",
+    "reloadServer": "Reload server copy",
+    "forceSave": "Overwrite with mine"
   }
 }

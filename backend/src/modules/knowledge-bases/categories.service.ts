@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import { Model, Types, type ClientSession, type Connection } from 'mongoose';
+import { Article } from '../../common/mongo/schemas/article.schema';
 import { Category } from '../../common/mongo/schemas/category.schema';
 import { throwConflictIfDuplicate } from '../../common/mongo/mongo-errors';
 import { toObjectIdOrNull } from '../../common/mongo/object-id';
@@ -38,6 +39,7 @@ export class CategoriesService {
   constructor(
     @InjectConnection() private readonly connection: Connection,
     @InjectModel(Category.name) private readonly categoryModel: Model<Category>,
+    @InjectModel(Article.name) private readonly articleModel: Model<Article>,
     private readonly kbs: KnowledgeBasesService,
   ) {}
 
@@ -198,7 +200,12 @@ export class CategoriesService {
     if (!node) throw new NotFoundException('دسته‌بندی یافت نشد');
     const children = await this.categoryModel.countDocuments({ parentId: nodeId });
     if (children > 0) throw new UnprocessableEntityException('دسته‌بندی دارای زیرمجموعه است');
-    // Phase 4 adds: reject when articles reference this category.
+    const referenced = await this.articleModel.countDocuments({
+      knowledgeBaseId: access.kbId,
+      categoryId: nodeId,
+      deletedAt: null,
+    });
+    if (referenced > 0) throw new UnprocessableEntityException('دسته‌بندی دارای مقاله است');
     await this.categoryModel.deleteOne({ _id: nodeId });
   }
 

@@ -9,6 +9,7 @@ import { MongoModule } from './common/mongo/mongo.module';
 import { HealthModule } from './modules/health/health.module';
 import { IdentityModule } from './modules/identity/identity.module';
 import { KnowledgeBasesModule } from './modules/knowledge-bases/knowledge-bases.module';
+import { ArticlesModule } from './modules/articles/articles.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
 import { PermissionsModule } from './modules/permissions/permissions.module';
 import { UsersModule } from './modules/users/users.module';
@@ -40,6 +41,7 @@ import { UsersModule } from './modules/users/users.module';
     UsersModule,
     OrganizationsModule,
     KnowledgeBasesModule,
+    ArticlesModule,
     HealthModule,
   ],
   providers: [
