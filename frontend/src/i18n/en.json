@@ -1,0 +1,33 @@
+{
+  "app": { "name": "Knowledge Management System", "tagline": "Structured, trustworthy org knowledge" },
+  "nav": {
+    "dashboard": "Dashboard",
+    "knowledgeBases": "Knowledge bases",
+    "search": "Search",
+    "admin": "Admin",
+    "profile": "Profile"
+  },
+  "auth": {
+    "login": "Login",
+    "logout": "Logout",
+    "email": "Email",
+    "password": "Password",
+    "submit": "Sign in",
+    "welcome": "Welcome to the Knowledge Management System"
+  },
+  "common": {
+    "loading": "Loading…",
+    "empty": "Nothing here yet",
+    "error": "Something went wrong",
+    "retry": "Retry",
+    "save": "Save",
+    "cancel": "Cancel",
+    "backendStatus": "Backend status"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "subtitle": "Overview of knowledge bases and recent activity",
+    "connected": "Backend connected",
+    "disconnected": "Backend unreachable"
+  }
+}

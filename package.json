@@ -1,0 +1,25 @@
+{
+  "name": "kms",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Enterprise Knowledge Management System — modular monolith (NestJS + React)",
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev:api": "npm run start:dev --workspace=backend",
+    "dev:web": "npm run dev --workspace=frontend",
+    "build": "npm run build --workspace=backend && npm run build --workspace=frontend",
+    "build:api": "npm run build --workspace=backend",
+    "build:web": "npm run build --workspace=frontend",
+    "typecheck": "npx tsc --noEmit -p backend && npx tsc --noEmit -p frontend",
+    "test": "npm test --workspace=backend",
+    "prisma:validate": "npx prisma validate --schema=backend/prisma/schema.prisma",
+    "prisma:migrate": "npx prisma migrate dev --schema=backend/prisma/schema.prisma",
+    "prisma:seed": "npm run prisma:seed --workspace=backend"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

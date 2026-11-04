@@ -1,0 +1,390 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Identity / Organizations ----------
+
+model Organization {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @db.Text
+  slug        String   @db.Citext
+  description String?  @db.Text
+  logoUrl     String?  @map("logo_url") @db.Text
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  departments    Department[]
+  memberships    Membership[]
+  knowledgeBases KnowledgeBase[]
+  articles       Article[]
+  tags           Tag[]
+  documents      Document[]
+  auditLogs      AuditLog[]
+
+  @@unique([slug])
+  @@map("organizations")
+}
+
+model Department {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  parentId       String?  @map("parent_id") @db.Uuid
+  name           String   @db.Text
+  slug           String   @db.Text
+  path           String   @default("/") @db.Text
+  depth          Int      @default(0)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent       Department?  @relation("DeptTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children     Department[] @relation("DeptTree")
+  memberships  Membership[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId, parentId])
+  @@map("departments")
+}
+
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  email        String    @db.Citext
+  passwordHash String    @map("password_hash") @db.Text
+  fullName     String    @map("full_name") @db.Text
+  avatarUrl    String?   @map("avatar_url") @db.Text
+  locale       String    @default("fa") @db.Text
+  isActive     Boolean   @default(true) @map("is_active")
+  isSuperAdmin Boolean   @default(false) @map("is_super_admin")
+  lastLoginAt  DateTime? @map("last_login_at") @db.Timestamptz
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  memberships        Membership[]
+  sessions           Session[]
+  ownedKbs           KnowledgeBase[]     @relation("KbOwner")
+  kbMemberships      KbMember[]
+  articles           Article[]           @relation("ArticleAuthor")
+  versions           ArticleVersion[]
+  attachments        ArticleAttachment[]
+  reviewRequestsMade ReviewRequest[]     @relation("Requester")
+  reviewTasks        ReviewRequest[]     @relation("Reviewer")
+  workflowActions    WorkflowHistory[]
+  comments           Comment[]
+  documents          Document[]
+  notifications      Notification[]
+
+  @@unique([email])
+  @@map("users")
+}
+
+model Membership {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  role           String   @default("member") @db.Text // org-admin | member
+  departmentId   String?  @map("department_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  department   Department?  @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+  @@map("memberships")
+}
+
+model Session {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  refreshHash String    @map("refresh_hash") @db.Text
+  familyId    String    @map("family_id") @db.Uuid
+  expiresAt   DateTime  @map("expires_at") @db.Timestamptz
+  revokedAt   DateTime? @map("revoked_at") @db.Timestamptz
+  ip          String?   @db.Text
+  userAgent   String?   @map("user_agent") @db.Text
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+  @@map("sessions")
+}
+
+// ---------- Knowledge bases ----------
+
+model KnowledgeBase {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  title          String   @db.Text
+  slug           String   @db.Text
+  description    String?  @db.Text
+  icon           String?  @db.Text
+  visibility     String   @default("internal") @db.Text // private | internal | public
+  ownerId        String   @map("owner_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  owner        User         @relation("KbOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  members      KbMember[]
+  categories   Category[]
+  articles     Article[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId, visibility])
+  @@map("knowledge_bases")
+}
+
+model KbMember {
+  id              String   @id @default(uuid()) @db.Uuid
+  knowledgeBaseId String   @map("knowledge_base_id") @db.Uuid
+  userId          String   @map("user_id") @db.Uuid
+  role            String   @default("reader") @db.Text // manager | contributor | reviewer | reader
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  knowledgeBase KnowledgeBase @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([knowledgeBaseId, userId])
+  @@map("kb_members")
+}
+
+model Category {
+  id              String   @id @default(uuid()) @db.Uuid
+  knowledgeBaseId String   @map("knowledge_base_id") @db.Uuid
+  parentId        String?  @map("parent_id") @db.Uuid
+  title           String   @db.Text
+  slug            String   @db.Text
+  description     String?  @db.Text
+  position        Int      @default(0)
+  path            String   @default("/") @db.Text
+  depth           Int      @default(0)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  knowledgeBase KnowledgeBase @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
+  parent        Category?     @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children      Category[]    @relation("CategoryTree")
+  articles      Article[]
+
+  @@unique([knowledgeBaseId, slug])
+  @@index([knowledgeBaseId, parentId, position])
+  @@map("categories")
+}
+
+// ---------- Articles / versions / tags ----------
+
+model Article {
+  id              String    @id @default(uuid()) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  knowledgeBaseId String    @map("knowledge_base_id") @db.Uuid
+  categoryId      String?   @map("category_id") @db.Uuid
+  authorId        String    @map("author_id") @db.Uuid
+  title           String    @db.Text
+  slug            String    @db.Text
+  summary         String?   @db.Text
+  contentJson     Json      @map("content_json") @db.JsonB
+  contentText     String    @default("") @map("content_text") @db.Text
+  contentHtml     String?   @map("content_html") @db.Text
+  status          String    @default("draft") @db.Text // draft | in_review | published | archived
+  version         Int       @default(1)
+  viewCount       Int       @default(0) @map("view_count")
+  publishedAt     DateTime? @map("published_at") @db.Timestamptz
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  organization    Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  knowledgeBase   KnowledgeBase       @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
+  category        Category?           @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  author          User                @relation("ArticleAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  versions        ArticleVersion[]
+  tags            ArticleTag[]
+  attachments     ArticleAttachment[]
+  reviewRequests  ReviewRequest[]
+  workflowHistory WorkflowHistory[]
+  comments        Comment[]
+
+  @@unique([knowledgeBaseId, slug])
+  @@index([knowledgeBaseId, status])
+  @@index([authorId])
+  @@map("articles")
+}
+
+model ArticleVersion {
+  id          String   @id @default(uuid()) @db.Uuid
+  articleId   String   @map("article_id") @db.Uuid
+  version     Int
+  title       String   @db.Text
+  summary     String?  @db.Text
+  contentJson Json     @map("content_json") @db.JsonB
+  contentText String?  @map("content_text") @db.Text
+  changelog   String?  @db.Text
+  createdBy   String   @map("created_by") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  creator User    @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+
+  @@unique([articleId, version])
+  @@map("article_versions")
+}
+
+model Tag {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String   @db.Citext
+  slug           String   @db.Text
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  articles     ArticleTag[]
+
+  @@unique([organizationId, slug])
+  @@map("tags")
+}
+
+model ArticleTag {
+  articleId String @map("article_id") @db.Uuid
+  tagId     String @map("tag_id") @db.Uuid
+
+  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  tag     Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([articleId, tagId])
+  @@map("article_tags")
+}
+
+// ---------- Documents ----------
+
+model Document {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  uploaderId     String   @map("uploader_id") @db.Uuid
+  objectKey      String   @map("object_key") @db.Text
+  filename       String   @db.Text
+  mime           String   @db.Text
+  sizeBytes      Int      @map("size_bytes")
+  checksumSha256 String?  @map("checksum_sha256") @db.Text
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  uploader     User                @relation(fields: [uploaderId], references: [id], onDelete: Restrict)
+  attachments  ArticleAttachment[]
+
+  @@unique([objectKey])
+  @@map("documents")
+}
+
+model ArticleAttachment {
+  id         String   @id @default(uuid()) @db.Uuid
+  articleId  String   @map("article_id") @db.Uuid
+  documentId String   @map("document_id") @db.Uuid
+  createdBy  String   @map("created_by") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  article  Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  creator  User     @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+
+  @@unique([articleId, documentId])
+  @@map("article_attachments")
+}
+
+// ---------- Workflow / comments / notifications / audit ----------
+
+model ReviewRequest {
+  id          String    @id @default(uuid()) @db.Uuid
+  articleId   String    @map("article_id") @db.Uuid
+  requesterId String    @map("requester_id") @db.Uuid
+  reviewerId  String    @map("reviewer_id") @db.Uuid
+  status      String    @default("pending") @db.Text // pending | approved | rejected | cancelled
+  comment     String?   @db.Text
+  decidedAt   DateTime? @map("decided_at") @db.Timestamptz
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  article   Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  requester User    @relation("Requester", fields: [requesterId], references: [id], onDelete: Restrict)
+  reviewer  User    @relation("Reviewer", fields: [reviewerId], references: [id], onDelete: Restrict)
+
+  @@index([articleId, status])
+  @@index([reviewerId, status])
+  @@map("review_requests")
+}
+
+model WorkflowHistory {
+  id         String   @id @default(uuid()) @db.Uuid
+  articleId  String   @map("article_id") @db.Uuid
+  fromStatus String   @map("from_status") @db.Text
+  toStatus   String   @map("to_status") @db.Text
+  actorId    String   @map("actor_id") @db.Uuid
+  comment    String?  @db.Text
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  actor   User    @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([articleId, createdAt])
+  @@map("workflow_history")
+}
+
+model Comment {
+  id        String   @id @default(uuid()) @db.Uuid
+  articleId String   @map("article_id") @db.Uuid
+  authorId  String   @map("author_id") @db.Uuid
+  parentId  String?  @map("parent_id") @db.Uuid
+  body      String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  article Article   @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  author  User      @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  parent  Comment?  @relation("CommentThread", fields: [parentId], references: [id], onDelete: Cascade)
+  replies Comment[] @relation("CommentThread")
+
+  @@index([articleId, createdAt])
+  @@map("comments")
+}
+
+model Notification {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  type      String   @db.Text
+  title     String   @db.Text
+  body      String?  @db.Text
+  data      Json?    @db.JsonB
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead, createdAt])
+  @@map("notifications")
+}
+
+model AuditLog {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String?  @map("organization_id") @db.Uuid
+  actorId        String?  @map("actor_id") @db.Uuid
+  action         String   @db.Text
+  resourceType   String   @map("resource_type") @db.Text
+  resourceId     String   @map("resource_id") @db.Text
+  metadata       Json?    @db.JsonB
+  ip             String?  @db.Text
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([resourceType, resourceId])
+  @@map("audit_logs")
+}
