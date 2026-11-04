@@ -39,6 +39,9 @@ export function AppShell({ children }: { children?: ReactNode }): JSX.Element {
             <NavLink to="/" end className={({ isActive }) => navClass(isActive)}>
               {t('nav.dashboard')}
             </NavLink>
+            <NavLink to="/kbs" className={({ isActive }) => navClass(isActive)}>
+              {t('nav.knowledgeBases')}
+            </NavLink>
             <NavLink to="/search" className={({ isActive }) => navClass(isActive)}>
               {t('nav.search')}
             </NavLink>

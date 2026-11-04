@@ -8,6 +8,7 @@ import { RolesGuard } from './common/auth/roles.guard';
 import { MongoModule } from './common/mongo/mongo.module';
 import { HealthModule } from './modules/health/health.module';
 import { IdentityModule } from './modules/identity/identity.module';
+import { KnowledgeBasesModule } from './modules/knowledge-bases/knowledge-bases.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
 import { PermissionsModule } from './modules/permissions/permissions.module';
 import { UsersModule } from './modules/users/users.module';
@@ -38,6 +39,7 @@ import { UsersModule } from './modules/users/users.module';
     IdentityModule,
     UsersModule,
     OrganizationsModule,
+    KnowledgeBasesModule,
     HealthModule,
   ],
   providers: [

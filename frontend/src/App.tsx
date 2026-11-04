@@ -5,6 +5,8 @@ import { RequireAuth } from './features/auth/RequireAuth';
 import { createQueryClient } from './app/query-client';
 import { AdminPage } from './pages/AdminPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { KbDetailPage } from './pages/KbDetailPage';
+import { KbListPage } from './pages/KbListPage';
 import { LoginPage } from './pages/LoginPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { ProfilePage } from './pages/ProfilePage';
@@ -23,6 +25,8 @@ export default function App(): JSX.Element {
           <Route element={<RequireAuth />}>
             <Route element={<AppShell />}>
               <Route index element={<DashboardPage />} />
+              <Route path="/kbs" element={<KbListPage />} />
+              <Route path="/kbs/:id" element={<KbDetailPage />} />
               <Route path="/search" element={<SearchPage />} />
               <Route path="/profile" element={<ProfilePage />} />
               <Route path="/admin" element={<AdminPage />} />

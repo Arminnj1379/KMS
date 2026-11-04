@@ -2,14 +2,15 @@
 
 > Updated after every phase (see task §10). Legend: ✅ done · 🟡 partial · ⬜ not started · 🛑 blocked.
 
-## Current: Migration ✅ complete — next: Phase 3 KB Foundation
+## Current: Phase 3 ✅ complete — next: Phase 4 Articles
 
 | Phase | Status | Notes |
 |---|---|---|
 | Phase 0 Inspection & Design | ✅ | Empty repo confirmed; 7 docs; module DAG + ER + FTS + state machine. |
 | Phase 1 Foundation | ✅ | Verified green (builds, tsc, 3 tests, runtime health/ready/docs, compose db). MinIO pull blocked in sandbox (documented). |
-| 2 Identity & Access | ✅ | Backend: identity/users/orgs/permissions modules, global JWT+roles+throttle guards. Frontend: login/register/profile/admin, RequireAuth, 401 handling. |
-| PG → Mongo migration | ✅ | Mongoose 8 + MongoDB 8 (rs0) is the only app DB. Prisma/Postgres removed; 24/24 smoke + 28/28 tests green on Mongo (see below). |
+| 2 Identity & Access | ✅ | Backend: identity/users/orgs/permissions modules, global JWT+roles+throttle guards. Frontend: login/register/profile/admin, RequireAuth, 401 interceptor. |
+| PG → Mongo migration | ✅ | Mongoose 8 + MongoDB 8 (rs0) is the only app DB. Prisma/Postgres removed; 24/24 smoke + 28/28 tests green on Mongo. |
+| 3 KB Foundation | ✅ | Backend: KB CRUD + members + nested categories (cycle-safe, org-isolated). Frontend: KB list/detail + category tree + member management. |
 | 3 KB Foundation | ⬜ | — |
 | 4 Articles | ⬜ | — |
 | 5 Documents & Versioning | ⬜ | — |
@@ -53,6 +54,16 @@
 - Step E (removal): `@prisma/client` + `prisma` CLI gone from deps; `backend/prisma/*` + `common/prisma/*` deleted; `DATABASE_URL`/`POSTGRES_*` removed from code/env/compose; repo-wide grep clean except history docs (kept intentionally), code comments, and the compose restore note.
 - Verification (all executed 2026-11-04): `tsc` clean (api+web); backend `eslint` clean; `nest build` + `vite build` pass; unit **28/28** (incl. 3 live integration tests: unique email E11000, compound membership unique, `withTransaction` commit on rs0); live smoke **24/24 PASS** on Mongo (register/dup/login/me/wrong-pw/no-token/cross-org/invite/member-403/roster/rotation/reuse/family-dead/change-pw/old/new/last-admin/dept CRUD+cycle+nonempty/logout); `/api/health` + `/api/ready` (mongo ping) 200; `docker compose config` valid.
 - Debt: `autoIndex: false` in production + explicit index step deferred to Phase 9; text index is keyword-based (Persian has no stemmer) — swappable search façade unchanged; integration spec skips cleanly when MongoDB is unreachable.
+
+## Phase 3 — completed 2026-11-04 ✅
+- Backend `knowledge-bases` module: KB CRUD (slug unique per org, visibility private/internal/public), KB members (manager/contributor/reviewer/reader; member must belong to org; dup → 409), nested `categories` (tree + path/depth, cycle-safe move, non-empty delete guard). Org-scoped; missing/forbidden KB → 404 (no leak); management requires manager/org-admin (403); delete requires `?confirm=true` and cascades members + categories in one transaction (articles cascade lands in Phase 4).
+- Org-admin bypasses all KB checks (fallback control, so no last-manager guard by design); KB owner is created as manager at creation.
+- Frontend: `/kbs` list + create dialog, `/kbs/:id` detail (edit, two-step delete, member roster + role change + invite/remove, category tree with add-child/rename/reparent/delete), nav link, fa/en strings.
+- Verification (all green, executed 2026-11-04):
+  - unit: **36/36** (incl. 8 new KB/category rule tests: private invisibility, reader/manager authorization, confirm + cascade, org-membership requirement, cycle + non-empty guards).
+  - `tsc --noEmit` clean (api+web); backend `eslint` clean; `nest build` + `vite build` pass.
+  - live smoke vs compose Mongo (23 checks): create (manager) / slug-dup-409 / invite / private-hidden-from-nonmember / private-direct-404 / add-reader / reader-visible / reader-create-cat-403 / root+child / tree-shape / cycle-422 / nonempty-422 / reader-update-403 / cross-org-404 / no-confirm-422 / delete-204 + gone/members/cats-404. Three initial harness FAILs re-run correctly (PS5 `.Count`/`StatusCodeVariable` artifacts, app behavior proven correct).
+- Test data in dev Mongo only (`p3-*` KBs/users). Next: Phase 4 Articles.
 - [ ] Root: `docker-compose.yml`, `.env.example`, `.gitignore`, `README.md`, `package.json` (workspaces).
 - [ ] Backend scaffold + strict TS + lint + env + logging + filters + health + swagger + Prisma schema/seed.
 - [ ] Frontend scaffold + Tailwind + Router + Query + i18n + AppShell.
