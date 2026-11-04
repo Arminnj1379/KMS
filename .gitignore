@@ -15,6 +15,10 @@ pgdata/
 mongodata/
 minio-data/
 
+# Local storage driver uploads (dev/smoke only; never commit user bytes)
+uploads/
+uploads-smoke/
+
 # Pre-migration database backups (large, history only)
 backups/
 

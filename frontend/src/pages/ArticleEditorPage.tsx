@@ -59,6 +59,7 @@ export function ArticleEditorPage(): JSX.Element {
   const [categoryId, setCategoryId] = useState('');
   const [tags, setTags] = useState('');
   const [version, setVersion] = useState(1);
+  const [changelog, setChangelog] = useState('');
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [conflict, setConflict] = useState<Conflict | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -137,6 +138,7 @@ export function ArticleEditorPage(): JSX.Element {
         });
         navigate(`/kbs/${kbId}/articles/${data.slug}`, { replace: true });
       } else {
+        const note = changelog.trim();
         const data = await update.mutateAsync({
           version,
           title,
@@ -145,8 +147,10 @@ export function ArticleEditorPage(): JSX.Element {
           contentText: c?.text,
           categoryId: categoryId === '' ? null : categoryId,
           tagNames: parseTagNames(tags),
+          ...(note ? { changelog: note } : {}),
         });
         setVersion(data.version);
+        if (note) setChangelog('');
         setSavedAt(new Date().toLocaleTimeString('fa-IR'));
       }
     } catch (err) {
@@ -261,6 +265,18 @@ export function ArticleEditorPage(): JSX.Element {
             className={inputClass}
           />
         </label>
+        {!isCreate && (
+          <label className="block text-sm sm:col-span-2">
+            {t('article.changelogPh')}
+            <input
+              value={changelog}
+              onChange={(e) => setChangelog(e.target.value)}
+              placeholder={t('article.changelogHint')}
+              maxLength={200}
+              className={inputClass}
+            />
+          </label>
+        )}
       </div>
 
       {!isCreate && existing.data ? (

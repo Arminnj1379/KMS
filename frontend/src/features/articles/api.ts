@@ -1,5 +1,11 @@
 import { apiClient } from '../../shared/lib/api-client';
 
+export interface ArticleAttachment {
+  documentId: string;
+  createdBy: string;
+  createdAt: string;
+}
+
 export interface Article {
   id: string;
   knowledgeBaseId: string;
@@ -15,6 +21,7 @@ export interface Article {
   viewCount: number;
   tagIds: string[];
   tagNames: string[];
+  attachments: ArticleAttachment[];
   publishedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -90,11 +97,12 @@ export async function updateArticle(
   input: {
     version: number;
     title?: string;
-    summary?: string;
+    summary?: string | null;
     contentJson?: Record<string, unknown>;
     contentText?: string;
     categoryId?: string | null;
     tagNames?: string[];
+    changelog?: string;
   },
 ): Promise<Article> {
   const { data } = await apiClient.patch<Article>(`/knowledge-bases/${kbId}/articles/${articleId}`, input);

@@ -77,7 +77,7 @@ export class UpdateArticleDto {
   @IsOptional()
   @IsString()
   @MaxLength(500)
-  summary?: string;
+  summary?: string | null;
 
   @ApiPropertyOptional({ description: 'Tiptap document (type: doc)' })
   @IsOptional()
@@ -93,6 +93,15 @@ export class UpdateArticleDto {
   @IsOptional()
   @IsString()
   categoryId?: string | null;
+
+  @ApiPropertyOptional({
+    description: 'Changelog for an explicit named version (stores an immutable snapshot)',
+    maxLength: 200,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  changelog?: string;
 
   @ApiPropertyOptional({ type: [String], maxItems: 20 })
   @IsOptional()

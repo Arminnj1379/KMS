@@ -2,6 +2,8 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { t } from '../i18n';
 import { toApiMessage } from '../shared/lib/api-client';
 import { ArticleViewer } from '../features/articles/components/ArticleViewer';
+import { AttachmentsCard } from '../features/documents/AttachmentsCard';
+import { HistoryCard } from '../features/article-versions/HistoryCard';
 import {
   useArchiveArticle,
   useArticle,
@@ -130,6 +132,9 @@ export function ArticleViewPage(): JSX.Element {
       <div className="rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
         <ArticleViewer content={a.contentJson} />
       </div>
+
+      <AttachmentsCard kbId={kbId} articleId={articleId} canWrite={canWrite} />
+      <HistoryCard kbId={kbId} articleId={articleId} canWrite={canWrite} />
 
       {related.data && related.data.length > 0 && (
         <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">

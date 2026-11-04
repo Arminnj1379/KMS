@@ -6,12 +6,14 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
-import { Model, Types, type Connection } from 'mongoose';
+import { Model, Types, type ClientSession, type Connection } from 'mongoose';
 import { Article } from '../../common/mongo/schemas/article.schema';
+import { ArticleVersion } from '../../common/mongo/schemas/article-version.schema';
 import { Category } from '../../common/mongo/schemas/category.schema';
 import { Tag } from '../../common/mongo/schemas/tag.schema';
 import { throwConflictIfDuplicate } from '../../common/mongo/mongo-errors';
 import { normalizeSlug, toObjectIdOrNull } from '../../common/mongo/object-id';
+import { withTransaction } from '../../common/mongo/transaction.helper';
 import {
   KnowledgeBasesService,
   type KbAccess,
@@ -45,6 +47,12 @@ export function extractTextFromTiptap(node: unknown): string {
   return '';
 }
 
+type AttachmentLinkLean = {
+  documentId: Types.ObjectId;
+  createdBy: Types.ObjectId;
+  createdAt: Date;
+};
+
 type ArticleLean = {
   _id: Types.ObjectId;
   organizationId: Types.ObjectId;
@@ -61,11 +69,15 @@ type ArticleLean = {
   version: number;
   viewCount: number;
   tagIds: Types.ObjectId[];
+  attachments: AttachmentLinkLean[];
   publishedAt: Date | null;
   deletedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 };
+
+/** Max attachments per article (bounded embedding, D-017). */
+export const MAX_ARTICLE_ATTACHMENTS = 20;
 
 /**
  * Articles within one KB. Read: any KB-visible member. Write (create/update):
@@ -79,6 +91,7 @@ export class ArticlesService {
   constructor(
     @InjectConnection() private readonly connection: Connection,
     @InjectModel(Article.name) private readonly articleModel: Model<Article>,
+    @InjectModel(ArticleVersion.name) private readonly versionModel: Model<ArticleVersion>,
     @InjectModel(Tag.name) private readonly tagModel: Model<Tag>,
     @InjectModel(Category.name) private readonly categoryModel: Model<Category>,
     private readonly kbs: KnowledgeBasesService,
@@ -151,6 +164,11 @@ export class ArticlesService {
       viewCount: a.viewCount,
       tagIds: a.tagIds.map((t) => t.toHexString()),
       tagNames: a.tagIds.map((t) => tagNames.get(t.toHexString()) ?? t.toHexString()),
+      attachments: a.attachments.map((l) => ({
+        documentId: l.documentId.toHexString(),
+        createdBy: l.createdBy.toHexString(),
+        createdAt: l.createdAt,
+      })),
       publishedAt: a.publishedAt,
       createdAt: a.createdAt,
       updatedAt: a.updatedAt,
@@ -169,6 +187,56 @@ export class ArticlesService {
       : null;
     if (!cat) throw new NotFoundException('دسته‌بندی یافت نشد');
     return cat._id;
+  }
+
+  /** Immutable snapshot row for the given article state (insert-only, never updated). */
+  private snapshotOf(a: ArticleLean, createdBy: Types.ObjectId, changelog: string | null) {
+    return {
+      articleId: a._id,
+      version: a.version,
+      title: a.title,
+      summary: a.summary,
+      contentJson: a.contentJson,
+      contentText: a.contentText,
+      changelog,
+      createdBy,
+    };
+  }
+
+  private async insertSnapshot(
+    a: ArticleLean,
+    createdBy: Types.ObjectId,
+    changelog: string | null,
+    session?: ClientSession,
+  ): Promise<void> {
+    await this.versionModel.create([this.snapshotOf(a, createdBy, changelog)], session ? { session } : undefined);
+  }
+
+  /** Read check without side effects (unlike findOne, no viewCount bump). Exported for versions/documents. */
+  async requireReadableArticle(
+    orgId: string,
+    userId: string,
+    orgRole: string,
+    kbIdOrSlug: string,
+    articleIdOrSlug: string,
+  ) {
+    const access = await this.kbs.requireAccess(orgId, userId, orgRole, kbIdOrSlug);
+    const article = await this.findArticle(access.kbId, articleIdOrSlug);
+    if (!article) throw new NotFoundException('مقاله یافت نشد');
+    return { article, access };
+  }
+
+  /** Writer check (manager/contributor/org-admin). Exported for versions/documents. */
+  async requireWriterArticle(
+    orgId: string,
+    userId: string,
+    orgRole: string,
+    kbIdOrSlug: string,
+    articleIdOrSlug: string,
+  ) {
+    const result = await this.requireReadableArticle(orgId, userId, orgRole, kbIdOrSlug, articleIdOrSlug);
+    this.assertWriter(result.access);
+    return result;
   }
 
   async create(orgId: string, userId: string, orgRole: string, kbIdOrSlug: string, dto: CreateArticleDto) {
@@ -299,40 +367,50 @@ export class ArticlesService {
     articleIdOrSlug: string,
     dto: UpdateArticleDto,
   ) {
-    const access = await this.kbs.requireAccess(orgId, userId, orgRole, kbIdOrSlug);
-    this.assertWriter(access);
+    const { access } = await this.requireWriterArticle(orgId, userId, orgRole, kbIdOrSlug, articleIdOrSlug);
     if (dto.contentJson && (dto.contentJson as { type?: unknown }).type !== 'doc') {
       throw new UnprocessableEntityException('ساختار محتوای مقاله معتبر نیست');
     }
     const orgObjectId = toObjectIdOrNull(orgId);
-    if (!orgObjectId) throw new NotFoundException('سازمان یافت نشد');
+    const actorObjectId = toObjectIdOrNull(userId);
+    if (!orgObjectId || !actorObjectId) throw new NotFoundException('سازمان یافت نشد');
     const categoryId = await this.resolveCategory(access.kbId, dto.categoryId);
     const tagIds = dto.tagNames !== undefined ? await this.resolveTagIds(orgObjectId, dto.tagNames) : undefined;
     const articleId = toObjectIdOrNull(articleIdOrSlug);
     const idFilter = articleId
       ? { _id: articleId, knowledgeBaseId: access.kbId, deletedAt: null }
       : { slug: articleIdOrSlug, knowledgeBaseId: access.kbId, deletedAt: null };
-    const updated = (await this.articleModel
-      .findOneAndUpdate(
-        { ...idFilter, version: dto.version },
-        {
-          $set: {
-            ...(dto.title !== undefined ? { title: dto.title } : {}),
-            ...(dto.summary !== undefined ? { summary: dto.summary } : {}),
-            ...(dto.contentJson !== undefined ? { contentJson: dto.contentJson } : {}),
-            ...(dto.contentText !== undefined
-              ? { contentText: dto.contentText }
-              : dto.contentJson !== undefined
-                ? { contentText: extractTextFromTiptap(dto.contentJson) }
-                : {}),
-            ...(categoryId !== undefined ? { categoryId } : {}),
-            ...(tagIds !== undefined ? { tagIds } : {}),
+    // Snapshot policy (D-019): a named version is stored only when the client
+    // sends `changelog` (explicit "save version") — plain autosaves just bump
+    // the monotonic counter. Transitions always snapshot (see transition()).
+    const updated = await withTransaction(this.connection, async (tx) => {
+      const next = (await this.articleModel
+        .findOneAndUpdate(
+          { ...idFilter, version: dto.version },
+          {
+            $set: {
+              ...(dto.title !== undefined ? { title: dto.title } : {}),
+              ...(dto.summary !== undefined ? { summary: dto.summary } : {}),
+              ...(dto.contentJson !== undefined ? { contentJson: dto.contentJson } : {}),
+              ...(dto.contentText !== undefined
+                ? { contentText: dto.contentText }
+                : dto.contentJson !== undefined
+                  ? { contentText: extractTextFromTiptap(dto.contentJson) }
+                  : {}),
+              ...(categoryId !== undefined ? { categoryId } : {}),
+              ...(tagIds !== undefined ? { tagIds } : {}),
+            },
+            $inc: { version: 1 },
           },
-          $inc: { version: 1 },
-        },
-        { new: true },
-      )
-      .lean()) as unknown as ArticleLean | null;
+          { new: true },
+        )
+        .session(tx)
+        .lean()) as unknown as ArticleLean | null;
+      if (next && dto.changelog) {
+        await this.insertSnapshot(next, actorObjectId, dto.changelog, tx);
+      }
+      return next;
+    });
     if (updated) return this.toDto(updated, await this.tagNamesById(updated.tagIds));
     const current = await this.findArticle(access.kbId, articleIdOrSlug);
     if (!current) throw new NotFoundException('مقاله یافت نشد');
@@ -353,55 +431,123 @@ export class ArticlesService {
 
   private async transition(
     access: KbAccess,
+    actorId: string,
     articleIdOrSlug: string,
     from: string[],
     to: string,
+    changelog: string,
   ) {
     this.kbs.requireManager(access);
+    const actorObjectId = toObjectIdOrNull(actorId);
+    if (!actorObjectId) throw new NotFoundException('کاربر یافت نشد');
     const article = await this.findArticle(access.kbId, articleIdOrSlug);
     if (!article) throw new NotFoundException('مقاله یافت نشد');
     if (!from.includes(article.status)) {
       throw new UnprocessableEntityException(`تغییر وضعیت از «${article.status}» مجاز نیست`);
     }
     const now = new Date();
-    const updated = (await this.articleModel
-      .findOneAndUpdate(
-        { _id: article._id, version: article.version },
-        {
-          $set: {
-            status: to,
-            ...(to === 'published' ? { publishedAt: now } : {}),
-            ...(article.status === 'published' && to !== 'published' && to !== 'archived'
-              ? { publishedAt: null }
-              : {}),
+    const updated = await withTransaction(this.connection, async (tx) => {
+      const next = (await this.articleModel
+        .findOneAndUpdate(
+          { _id: article._id, version: article.version },
+          {
+            $set: {
+              status: to,
+              ...(to === 'published' ? { publishedAt: now } : {}),
+              ...(article.status === 'published' && to !== 'published' && to !== 'archived'
+                ? { publishedAt: null }
+                : {}),
+            },
+            $inc: { version: 1 },
           },
-          $inc: { version: 1 },
-        },
-        { new: true },
-      )
-      .lean()) as unknown as ArticleLean | null;
-    if (!updated) throw new ConflictException('نسخه مقاله تغییر کرده است؛ لطفاً بازخوانی کنید');
+          { new: true },
+        )
+        .session(tx)
+        .lean()) as unknown as ArticleLean | null;
+      if (!next) throw new ConflictException('نسخه مقاله تغییر کرده است؛ لطفاً بازخوانی کنید');
+      await this.insertSnapshot(next, actorObjectId, changelog, tx);
+      return next;
+    });
     return this.toDto(updated, await this.tagNamesById(updated.tagIds));
   }
 
   async publish(orgId: string, userId: string, orgRole: string, kb: string, id: string) {
     const access = await this.kbs.requireAccess(orgId, userId, orgRole, kb);
-    return this.transition(access, id, ['draft', 'in_review'], 'published');
+    return this.transition(access, userId, id, ['draft', 'in_review'], 'published', 'انتشار مقاله');
   }
 
   async unpublish(orgId: string, userId: string, orgRole: string, kb: string, id: string) {
     const access = await this.kbs.requireAccess(orgId, userId, orgRole, kb);
-    return this.transition(access, id, ['published'], 'draft');
+    return this.transition(access, userId, id, ['published'], 'draft', 'بازگردانی منتشرشده به پیش‌نویس');
   }
 
   async archive(orgId: string, userId: string, orgRole: string, kb: string, id: string) {
     const access = await this.kbs.requireAccess(orgId, userId, orgRole, kb);
-    return this.transition(access, id, ['draft', 'in_review', 'published'], 'archived');
+    return this.transition(access, userId, id, ['draft', 'in_review', 'published'], 'archived', 'بایگانی مقاله');
   }
 
   async restore(orgId: string, userId: string, orgRole: string, kb: string, id: string) {
     const access = await this.kbs.requireAccess(orgId, userId, orgRole, kb);
-    return this.transition(access, id, ['archived'], 'draft');
+    return this.transition(access, userId, id, ['archived'], 'draft', 'بازیابی از بایگانی');
+  }
+
+  async attachDocument(
+    orgId: string,
+    userId: string,
+    orgRole: string,
+    kbIdOrSlug: string,
+    articleIdOrSlug: string,
+    input: { documentId: Types.ObjectId; createdBy: Types.ObjectId },
+  ) {
+    const { article } = await this.requireWriterArticle(orgId, userId, orgRole, kbIdOrSlug, articleIdOrSlug);
+    if (article.attachments.length >= MAX_ARTICLE_ATTACHMENTS) {
+      throw new UnprocessableEntityException(`سقف پیوست مقاله (${MAX_ARTICLE_ATTACHMENTS}) پر شده است`);
+    }
+    if (article.attachments.some((l) => l.documentId.toHexString() === input.documentId.toHexString())) {
+      throw new ConflictException('این فایل قبلاً به مقاله پیوست شده است');
+    }
+    const updated = (await this.articleModel
+      .findOneAndUpdate(
+        { _id: article._id },
+        { $push: { attachments: { documentId: input.documentId, createdBy: input.createdBy, createdAt: new Date() } } },
+        { new: true },
+      )
+      .lean()) as unknown as ArticleLean | null;
+    if (!updated) throw new NotFoundException('مقاله یافت نشد');
+    return this.toDto(updated, await this.tagNamesById(updated.tagIds));
+  }
+
+  async detachDocument(
+    orgId: string,
+    userId: string,
+    orgRole: string,
+    kbIdOrSlug: string,
+    articleIdOrSlug: string,
+    documentId: string,
+  ): Promise<void> {
+    const { article } = await this.requireWriterArticle(orgId, userId, orgRole, kbIdOrSlug, articleIdOrSlug);
+    const docObjectId = toObjectIdOrNull(documentId);
+    if (!docObjectId) throw new NotFoundException('پیوست یافت نشد');
+    if (!article.attachments.some((l) => l.documentId.toHexString() === docObjectId.toHexString())) {
+      throw new NotFoundException('پیوست یافت نشد');
+    }
+    await this.articleModel.updateOne({ _id: article._id }, { $pull: { attachments: { documentId: docObjectId } } });
+  }
+
+  /** Raw attachment links (read permission). Enrichment lives in DocumentsService. */
+  async listAttachmentLinks(
+    orgId: string,
+    userId: string,
+    orgRole: string,
+    kbIdOrSlug: string,
+    articleIdOrSlug: string,
+  ) {
+    const { article } = await this.requireReadableArticle(orgId, userId, orgRole, kbIdOrSlug, articleIdOrSlug);
+    return article.attachments.map((l) => ({
+      documentId: l.documentId.toHexString(),
+      createdBy: l.createdBy.toHexString(),
+      createdAt: l.createdAt,
+    }));
   }
 
   async related(orgId: string, userId: string, orgRole: string, kbIdOrSlug: string, articleIdOrSlug: string) {

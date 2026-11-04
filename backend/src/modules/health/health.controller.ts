@@ -17,7 +17,7 @@ export class HealthController {
 
   @Public()
   @Get('ready')
-  @ApiOperation({ summary: 'Readiness probe (checks Postgres)' })
+  @ApiOperation({ summary: 'Readiness probe (checks MongoDB + object storage)' })
   async readiness(): Promise<{ status: string; checks: Record<string, string> }> {
     return this.health.readiness();
   }

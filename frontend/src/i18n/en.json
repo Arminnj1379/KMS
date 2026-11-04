@@ -109,6 +109,26 @@
     "conflictTitle": "The article changed on the server",
     "conflictBody": "Someone else edited this article. You can reload the server copy or overwrite it with yours.",
     "reloadServer": "Reload server copy",
-    "forceSave": "Overwrite with mine"
+    "forceSave": "Overwrite with mine",
+    "changelogPh": "Version note (optional)",
+    "changelogHint": "e.g. fixed section 2; empty = autosave without a version"
+  },
+  "document": {
+    "title": "Attachments",
+    "upload": "Upload file",
+    "empty": "No attachments yet",
+    "download": "Download",
+    "detach": "Detach"
+  },
+  "version": {
+    "title": "Version history",
+    "empty": "No versions recorded yet",
+    "snapshot": "Save version",
+    "changelogPh": "Note for this version…",
+    "restore": "Restore",
+    "diffTitle": "Compare two versions",
+    "from": "From",
+    "to": "To",
+    "titleChanged": "Title changed"
   }
 }

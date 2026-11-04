@@ -2,7 +2,7 @@
 
 > Updated after every phase (see task §10). Legend: ✅ done · 🟡 partial · ⬜ not started · 🛑 blocked.
 
-## Current: Phase 4 ✅ complete — next: Phase 5 Documents & Versioning
+## Current: Phase 5 ✅ complete — next: Phase 6 Approval Workflow
 
 | Phase | Status | Notes |
 |---|---|---|
@@ -12,7 +12,7 @@
 | PG → Mongo migration | ✅ | Mongoose 8 + MongoDB 8 (rs0) is the only app DB. Prisma/Postgres removed; 24/24 smoke + 28/28 tests green on Mongo. |
 | 3 KB Foundation | ✅ | Backend: KB CRUD + members + nested categories (cycle-safe, org-isolated). Frontend: KB list/detail + category tree + member management. |
 | 4 Articles | ✅ | Backend: articles CRUD + optimistic 409 + tags + related + publish/archive state machine (org-isolated). Frontend: Tiptap editor + autosave + conflict dialog, list/view pages. |
-| 5 Documents & Versioning | ⬜ | — |
+| 5 Documents & Versioning | ✅ | Backend: storage seam (s3/local) + documents intent/confirm + attachments + immutable versions + diff/restore. Frontend: attachments card + history card + changelog save. |
 | 6 Approval Workflow | ⬜ | — |
 | 7 Search | ⬜ | — |
 | 8 Notifications & Audit | ⬜ | — |
@@ -73,6 +73,18 @@
   - `tsc --noEmit` clean (api+web); backend `eslint` clean; `nest build` + `vite build` pass; `docker compose config` valid.
   - live smoke vs compose Mongo (29 checks): login/kb-create/bad-doc-422/create-v1-draft/slug-dup-409/reader-add/reader-create-403/reader-list/get-by-slug+viewCount/stale-409/update-v2/reader-update-403/reader-publish-403/publish/double-publish-422/second-create/related-empty/related-shared-tag/tags-with-counts/cross-org-404/set-category/cat-with-article-422/archive/restore/unpublish/unpublish-again-422/KB-cascade-delete + articles/members-404. Three initial FAILs re-run correctly (harness path typos missing `/articles/`, app behavior proven correct).
 - Test data in dev Mongo only (`p4-*` users/KBs; cascade test deleted `p4-kb`). Debt: frontend bundle ~711kB (Tiptap; code-split deferred to Phase 9); search is keyword `$text` only (full search UI lands in Phase 7); versions insert-only snapshots land in Phase 5 (version counter already monotonic). Next: Phase 5 Documents & Versioning.
+
+## Phase 5 — completed 2026-11-04 ✅
+- Backend `common/storage` seam (`StorageService` + `StorageModule`, drivers `s3|local`, D-020): S3 presigned PUT/GET via AWS SDK v3; local driver stores bytes under `UPLOADS_DIR/<orgId>/` with `PUT documents/upload/:key` + streams via `GET documents/:id/file`.
+- Backend `documents` module (depends on articles + storage): `POST upload-intent` (allowlist + 25MB cap, server-minted key), `PUT upload/:key` (local bytes), `POST confirm` (verifies bytes exist, E11000→409, optional attach), `GET /documents` (org-scoped search+page), `GET :id` (metadata + download URL), `GET :id/file` (auth-guarded stream both drivers). Article attachments: `GET/POST knowledge-bases/:kbId/articles/:articleId/attachments`, `DELETE :documentId` (link removed, row retained). Read = any KB-visible member; attach/detach = writer; org isolation + invalid-id→404 throughout.
+- Backend `article-versions` module (depends on articles): `GET versions`, `GET :version`, `POST versions` (explicit snapshot), `GET :version/diff?to=` (line-block hunks), `POST :version/restore` (restore-as-new-version). `ArticlesService` now snapshots on explicit `changelog` updates and on every status transition (both inside transactions); autosaves without changelog store no snapshot (D-019). `UpdateArticleDto.summary` widened to `string | null` for faithful restore.
+- Health `/ready` now checks MongoDB + storage (spec updated with storage-both-cases).
+- Frontend: `features/documents` (api/hooks/`AttachmentsCard` upload→confirm→attach, download blob, detach) + `features/article-versions` (api/hooks/`HistoryCard` snapshot/diff/restore + inline text view); `ArticleViewPage` renders both cards; `ArticleEditorPage` manual save sends optional changelog (autosave never does); `Article.attachments` added; fa/en strings added.
+- Verification (all green, executed 2026-11-04):
+  - unit: **65/65** (incl. 14 new: changelog-snapshot, no-snapshot-on-autosave, transition-snapshot, attach-dup-409/detach-404/reader-403, intent-422s, confirm-422/409, cross-org-404, enrichment-order, diff hunks, restore-new-version; 4 pre-existing article specs fixed for the new read-before-write path).
+  - `tsc --noEmit` clean (api+web); backend `eslint` clean; `nest build` + `vite build` pass (bundle ~722kB, code-split still deferred to Phase 9).
+  - live smoke vs local Mongo + `STORAGE_DRIVER=local` (port 3001, 33 checks): ready-storage-up / register / kb / article-v1 / changelog-v2 + snapshot / autosave-v3 + no-snapshot / manual-snapshot / version-detail / diff-hunks / publish + snapshot / restore-as-v5 / intent-bad-mime-422 / intent-ok / local-PUT-200 / confirm+attach / enriched-list / metadata-downloadUrl / byte-round-trip / detach-204 + empty / row-retained / confirm-no-bytes-422 / reader invite+login+add / reader-list-200 + attach-403 + versions-200 + snapshot-403. Two script-side issues found and fixed in-harness (confirm should carry filename/mime/size; PS5.1 `@(fn …)` argument-mode parsing quirk) — app behavior proven correct on replay + full re-run.
+- Debt: S3/MinIO path is unit-covered but not live-verified here (registry denies `minio/*` pulls); compose/prod stay on `s3`. Test data left in dev Mongo only (`p5*`/`p5b*` users/KBs/articles/docs; `uploads-smoke/` bytes on disk, gitignored). Pre-existing stray `:3000` node process (old code, `/ready` 503) predates this session — smoke ran on `:3001`. Next: Phase 6 Approval Workflow.
 - [ ] Root: `docker-compose.yml`, `.env.example`, `.gitignore`, `README.md`, `package.json` (workspaces).
 - [ ] Backend scaffold + strict TS + lint + env + logging + filters + health + swagger + Prisma schema/seed.
 - [ ] Frontend scaffold + Tailwind + Router + Query + i18n + AppShell.

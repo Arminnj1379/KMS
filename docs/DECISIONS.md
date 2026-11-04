@@ -86,3 +86,13 @@ Consequences: Tag rename stays single-doc; attachment links are bounded per arti
 Context: PG used `citext` for `users.email` / `tags.name`.
 Decision: Lowercase + trim on write and on lookup (`normalizeEmail`, slug DTOs lowercased); unique indexes on the normalized value.
 Consequences: Case-variant duplicates impossible; display values keep original casing where needed (fullName, tag name).
+
+## D-019 Explicit versions only: changelog-gated snapshots — 2026-11-04
+Context: Autosave fires every few seconds; snapshotting every write would flood `articleVersions` and make history useless.
+Decision: `PATCH articles` stores an immutable snapshot only when the client sends `changelog` (explicit "save version" via the editor's version-note field or the history card's snapshot button). Every status transition (publish/unpublish/archive/restore) always snapshots with a server-generated changelog. Manual `POST versions` snapshots the current state on demand. Restore never rewrites history — it copies a snapshot into a NEW article version (which itself snapshots when a changelog is present).
+Consequences: History stays meaningful; autosaves only bump the monotonic counter. Tests assert snapshot-on-changelog, no-snapshot-on-autosave, snapshot-on-transition, restore-creates-new-version.
+
+## D-020 Local storage driver for offline/registry-blocked environments — 2026-11-04
+Context: `StorageService` targets S3/MinIO, but the sandbox registry denies `minio/*` pulls, so the `s3` driver cannot be verified live here.
+Decision: Add a `local` filesystem driver behind the same seam (`STORAGE_DRIVER=s3|local`, default `s3`). Local mode stores bytes under `UPLOADS_DIR/<orgId>/` with a mime sidecar; the client PUTs bytes to `PUT documents/upload/:key` and downloads stream through `GET documents/:id/file` (auth-guarded, no CORS/presign needed). S3 mode keeps presigned PUT/GET with the server never proxying bytes. Compose/prod stay on `s3`; local is for dev verification and offline laptops (single replica only).
+Consequences: Phase 5 verified live with `STORAGE_DRIVER=local`; MinIO path is code-reviewed + unit-covered but needs a networked environment for live confirmation (recorded as debt).

@@ -2,6 +2,7 @@ import { ConflictException, ForbiddenException, NotFoundException, Unprocessable
 import type { Connection } from 'mongoose';
 import { Model, Types } from 'mongoose';
 import type { Article } from '../../common/mongo/schemas/article.schema';
+import type { ArticleVersion } from '../../common/mongo/schemas/article-version.schema';
 import type { Category } from '../../common/mongo/schemas/category.schema';
 import type { Tag } from '../../common/mongo/schemas/tag.schema';
 import { ArticlesService } from './articles.service';
@@ -78,23 +79,26 @@ interface Deps {
   svc: ArticlesService;
   kbs: { requireAccess: jest.Mock; requireManager: jest.Mock };
   articles: ModelMock;
+  versions: ModelMock;
   tags: ModelMock;
   cats: ModelMock;
 }
 
 function makeDeps(role: string | null): Deps {
   const articles = makeModelMock();
+  const versions = makeModelMock();
   const tags = makeModelMock();
   const cats = makeModelMock();
   const kbs = makeKbsMock(role);
   const svc = new ArticlesService(
     makeTx(),
     articles as unknown as Model<Article>,
+    versions as unknown as Model<ArticleVersion>,
     tags as unknown as Model<Tag>,
     cats as unknown as Model<Category>,
     kbs,
   );
-  return { svc, kbs: kbs as unknown as { requireAccess: jest.Mock; requireManager: jest.Mock }, articles, tags, cats };
+  return { svc, kbs: kbs as unknown as { requireAccess: jest.Mock; requireManager: jest.Mock }, articles, versions, tags, cats };
 }
 
 const docJson = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'سلام' }] }] };
@@ -115,6 +119,7 @@ const articleDoc = (overrides: Record<string, unknown> = {}) => ({
   version: 1,
   viewCount: 0,
   tagIds: [],
+  attachments: [],
   publishedAt: null,
   deletedAt: null,
   createdAt: new Date(),
@@ -169,6 +174,7 @@ describe('Article rules', () => {
 
   it('matching version updates and bumps version', async () => {
     const d = makeDeps('contributor');
+    d.articles.findOne.mockReturnValue(q(articleDoc({ version: 1 })));
     d.articles.findOneAndUpdate.mockReturnValue(q(articleDoc({ version: 2, title: 'Upd' })));
     d.tags.find.mockReturnValue(q([]));
     const res = await d.svc.update(ORG, SARA, 'member', 'kb', '0000000000000000000000d1', { version: 1, title: 'Upd' });
@@ -206,5 +212,72 @@ describe('Article rules', () => {
         categoryId: '0000000000000000000000ff',
       }),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('update with changelog stores an immutable snapshot', async () => {
+    const d = makeDeps('contributor');
+    d.articles.findOne.mockReturnValue(q(articleDoc({ version: 1 })));
+    d.articles.findOneAndUpdate.mockReturnValue(q(articleDoc({ version: 2, title: 'Upd' })));
+    d.tags.find.mockReturnValue(q([]));
+    d.versions.create.mockResolvedValue({});
+    const res = await d.svc.update(ORG, SARA, 'member', 'kb', '0000000000000000000000d1', {
+      version: 1,
+      title: 'Upd',
+      changelog: 'بازبینی اول',
+    });
+    expect(res.version).toBe(2);
+    expect(d.versions.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('plain autosave (no changelog) stores no snapshot', async () => {
+    const d = makeDeps('contributor');
+    d.articles.findOne.mockReturnValue(q(articleDoc({ version: 1 })));
+    d.articles.findOneAndUpdate.mockReturnValue(q(articleDoc({ version: 2, title: 'Upd' })));
+    d.tags.find.mockReturnValue(q([]));
+    await d.svc.update(ORG, SARA, 'member', 'kb', '0000000000000000000000d1', { version: 1, title: 'Upd' });
+    expect(d.versions.create).not.toHaveBeenCalled();
+  });
+
+  it('publish transition stores a snapshot', async () => {
+    const d = makeDeps('manager');
+    d.articles.findOne.mockReturnValue(q(articleDoc({ status: 'draft', version: 2 })));
+    d.articles.findOneAndUpdate.mockReturnValue(q(articleDoc({ status: 'published', version: 3 })));
+    d.tags.find.mockReturnValue(q([]));
+    d.versions.create.mockResolvedValue({});
+    const res = await d.svc.publish(ORG, ALI, 'member', 'kb', 'a');
+    expect(res.status).toBe('published');
+    expect(d.versions.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('attach rejects duplicates (409) and detach of unknown link (404)', async () => {
+    const d = makeDeps('manager');
+    const docId = '0000000000000000000000e1';
+    d.articles.findOne.mockReturnValue(q(articleDoc({ attachments: [] })));
+    d.articles.findOneAndUpdate.mockReturnValue(
+      q(articleDoc({ attachments: [{ documentId: oid(docId), createdBy: oid(ALI), createdAt: new Date() }] })),
+    );
+    d.tags.find.mockReturnValue(q([]));
+    const res = await d.svc.attachDocument(ORG, ALI, 'member', 'kb', 'a', {
+      documentId: oid(docId),
+      createdBy: oid(ALI),
+    });
+    expect(res.attachments).toHaveLength(1);
+    d.articles.findOne.mockReturnValue(
+      q(articleDoc({ attachments: [{ documentId: oid(docId), createdBy: oid(ALI), createdAt: new Date() }] })),
+    );
+    await expect(
+      d.svc.attachDocument(ORG, ALI, 'member', 'kb', 'a', { documentId: oid(docId), createdBy: oid(ALI) }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    await expect(d.svc.detachDocument(ORG, ALI, 'member', 'kb', 'a', '0000000000000000000000ff')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+  });
+
+  it('reader cannot attach documents (403)', async () => {
+    const d = makeDeps('reader');
+    d.articles.findOne.mockReturnValue(q(articleDoc()));
+    await expect(
+      d.svc.attachDocument(ORG, SARA, 'member', 'kb', 'a', { documentId: oid('0000000000000000000000e1'), createdBy: oid(SARA) }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 });

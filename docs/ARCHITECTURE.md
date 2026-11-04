@@ -113,7 +113,7 @@ Enforced in `ApprovalWorkflowService.transition()` — single choke point, inval
 
 ## 8. Storage & Files
 
-Client: `POST /documents/upload-intent {filename,mime,size,articleId?}` → server validates (allowlist, quota) → returns presigned PUT + object key → client PUTs directly to MinIO → `POST /documents/confirm {key}` → row created. Download via presigned GET (5 min TTL). Bucket `kms-docs` private. S3 client abstracted (`StorageService`) so AWS S3 is a config change.
+Client: `POST /documents/upload-intent {filename,mime,size,articleId?}` → server validates (allowlist, quota) → returns presigned PUT + object key → client PUTs directly to MinIO → `POST /documents/confirm {key}` → row created. Download via presigned GET (5 min TTL). Bucket `kms-docs` private. S3 client abstracted (`StorageService`) so AWS S3 is a config change. Where MinIO is unreachable (offline dev), `STORAGE_DRIVER=local` stores bytes under `UPLOADS_DIR/<orgId>/` and the client PUTs to `PUT /documents/upload/:key` / streams via `GET /documents/:id/file` (see D-020).
 
 ## 9. Search Design (swap-ready)
 

@@ -24,6 +24,8 @@ const envSchema = z.object({
   S3_SECRET_KEY: z.string().min(1),
   S3_BUCKET: z.string().default('kms-docs'),
   S3_FORCE_PATH_STYLE: z.coerce.boolean().default(true),
+  STORAGE_DRIVER: z.enum(['s3', 'local']).default('s3'),
+  UPLOADS_DIR: z.string().default('./uploads'),
 });
 
 export type AppEnv = z.infer<typeof envSchema> & { corsOrigins: string[] };
