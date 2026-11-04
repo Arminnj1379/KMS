@@ -14,6 +14,7 @@ import { LoginPage } from './pages/LoginPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { RegisterPage } from './pages/RegisterPage';
+import { ReviewInboxPage } from './pages/ReviewInboxPage';
 import { SearchPage } from './pages/SearchPage';
 import { AppShell } from './shared/layout/AppShell';
 
@@ -34,6 +35,7 @@ export default function App(): JSX.Element {
               <Route path="/kbs/:kbId/articles/new" element={<ArticleEditorPage />} />
               <Route path="/kbs/:kbId/articles/:articleId" element={<ArticleViewPage />} />
               <Route path="/kbs/:kbId/articles/:articleId/edit" element={<ArticleEditorPage />} />
+              <Route path="/reviews" element={<ReviewInboxPage />} />
               <Route path="/search" element={<SearchPage />} />
               <Route path="/profile" element={<ProfilePage />} />
               <Route path="/admin" element={<AdminPage />} />

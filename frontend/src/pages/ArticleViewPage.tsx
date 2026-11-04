@@ -1,9 +1,13 @@
+import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { t } from '../i18n';
 import { toApiMessage } from '../shared/lib/api-client';
 import { ArticleViewer } from '../features/articles/components/ArticleViewer';
 import { AttachmentsCard } from '../features/documents/AttachmentsCard';
 import { HistoryCard } from '../features/article-versions/HistoryCard';
+import { SubmitReviewDialog } from '../features/approval/SubmitReviewDialog';
+import { useArticleReviews, useCancelReview } from '../features/approval/hooks';
+import { useMe } from '../features/auth/hooks';
 import {
   useArchiveArticle,
   useArticle,
@@ -26,6 +30,10 @@ export function ArticleViewPage(): JSX.Element {
   const archive = useArchiveArticle(kbId, articleId);
   const restore = useRestoreArticle(kbId, articleId);
   const del = useDeleteArticle(kbId);
+  const me = useMe();
+  const reviews = useArticleReviews(kbId, articleId);
+  const cancelReview = useCancelReview(kbId, articleId);
+  const [submitOpen, setSubmitOpen] = useState(false);
 
   const role = kb.data?.role ?? null;
   const canWrite = role === 'manager' || role === 'contributor' || role === 'org-admin';
@@ -45,10 +53,21 @@ export function ArticleViewPage(): JSX.Element {
 
   const a = article.data;
 
+  const meId = me.data?.user.id ?? null;
+  const pendingReview = reviews.data?.find((r) => r.status === 'pending') ?? null;
+  const canCancelReview = pendingReview !== null && (pendingReview.requesterId === meId || canManage);
+
   async function onDelete(): Promise<void> {
     await del.mutateAsync(a.id);
     navigate(`/kbs/${kbId}/articles`, { replace: true });
   }
+
+  const reviewStatusLabel: Record<string, string> = {
+    pending: t('review.status_pending'),
+    approved: t('review.status_approved'),
+    rejected: t('review.status_rejected'),
+    cancelled: t('review.status_cancelled'),
+  };
 
   return (
     <section className="mx-auto max-w-3xl space-y-6">
@@ -65,6 +84,15 @@ export function ArticleViewPage(): JSX.Element {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            {canWrite && a.status === 'draft' && (
+              <button
+                type="button"
+                onClick={() => setSubmitOpen(true)}
+                className="rounded-lg bg-brand-500 px-3 py-1 text-sm font-semibold text-white"
+              >
+                {t('review.submit')}
+              </button>
+            )}
             {canWrite && (
               <Link
                 to={`/kbs/${kbId}/articles/${a.slug}/edit`}
@@ -136,6 +164,43 @@ export function ArticleViewPage(): JSX.Element {
       <AttachmentsCard kbId={kbId} articleId={articleId} canWrite={canWrite} />
       <HistoryCard kbId={kbId} articleId={articleId} canWrite={canWrite} />
 
+      {pendingReview && (
+        <div className="rounded-2xl border border-amber-400 bg-amber-50 p-5 text-sm dark:border-amber-800 dark:bg-amber-950">
+          <p className="font-semibold">{t('review.pendingTitle')}</p>
+          {pendingReview.comment && (
+            <p className="mt-1 text-slate-600 dark:text-slate-300">{pendingReview.comment}</p>
+          )}
+          {canCancelReview && (
+            <button
+              type="button"
+              disabled={cancelReview.isPending}
+              onClick={() => void cancelReview.mutateAsync(pendingReview.id)}
+              className="mt-3 rounded-lg border border-slate-300 px-3 py-1 text-xs dark:border-slate-700"
+            >
+              {t('review.cancel')}
+            </button>
+          )}
+        </div>
+      )}
+      {cancelReview.isError && (
+        <p className="text-sm text-red-600">{toApiMessage(cancelReview.error, t('common.error'))}</p>
+      )}
+
+      {reviews.data && reviews.data.length > 0 && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+          <h2 className="text-sm font-semibold">{t('review.historyTitle')}</h2>
+          <ul className="mt-2 space-y-1">
+            {reviews.data.map((r) => (
+              <li key={r.id} className="text-sm text-slate-600 dark:text-slate-300">
+                {reviewStatusLabel[r.status] ?? r.status}
+                {r.comment ? ` — ${r.comment}` : ''}
+                <span className="text-xs text-slate-400"> · {new Date(r.createdAt).toLocaleString('fa-IR')}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {related.data && related.data.length > 0 && (
         <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
           <h2 className="text-sm font-semibold">{t('article.related')}</h2>
@@ -150,6 +215,8 @@ export function ArticleViewPage(): JSX.Element {
           </ul>
         </div>
       )}
+
+      <SubmitReviewDialog kbId={kbId} articleId={articleId} open={submitOpen} onClose={() => setSubmitOpen(false)} />
     </section>
   );
 }

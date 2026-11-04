@@ -101,8 +101,8 @@ Indexes: `{ organizationId: 1, slug: 1 }` unique.
 Indexes: `{ objectKey: 1 }` unique; `{ organizationId: 1, createdAt: -1 }`.
 
 ### reviewRequests
-`articleId` ref, `requesterId` ref, `reviewerId` ref, `status` (`pending|approved|rejected|cancelled`), `comment?`, `decidedAt?` + timestamps.
-Indexes: `{ articleId: 1, status: 1 }`; `{ reviewerId: 1, status: 1 }`.
+`organizationId` ref (org scope), `knowledgeBaseId` ref, `articleId` ref, denormalized display snapshot (`articleTitle`, `articleSlug`, `kbTitle`, `kbSlug` — captured at submit so the cross-KB inbox is one org-scoped query, same embed pattern as notifications), `requesterId` ref, `reviewerId` ref, `status` (`pending|approved|rejected|cancelled`), `comment?`, `decidedAt?` + timestamps.
+Indexes: `{ articleId: 1, status: 1 }`; `{ reviewerId: 1, status: 1 }`; `{ organizationId: 1, reviewerId: 1, status: 1, createdAt: -1 }`; `{ organizationId: 1, requesterId: 1, status: 1, createdAt: -1 }`.
 
 ### workflowHistory (append-only)
 `articleId` ref, `fromStatus`, `toStatus`, `actorId` ref, `comment?`, `createdAt`.

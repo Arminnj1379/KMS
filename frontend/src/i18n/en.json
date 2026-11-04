@@ -3,6 +3,7 @@
   "nav": {
     "dashboard": "Dashboard",
     "knowledgeBases": "Knowledge bases",
+    "reviews": "Reviews",
     "search": "Search",
     "admin": "Admin",
     "profile": "Profile"
@@ -130,5 +131,28 @@
     "from": "From",
     "to": "To",
     "titleChanged": "Title changed"
+  },
+  "review": {
+    "inboxTitle": "Review inbox",
+    "assignedToMe": "Assigned to me",
+    "myRequests": "My requests",
+    "submit": "Submit for review",
+    "submitTitle": "Submit article for review",
+    "reviewer": "Reviewer",
+    "pickReviewer": "Pick a reviewer…",
+    "noEligibleReviewer": "No member with reviewer/manager role in this knowledge base",
+    "commentOptional": "Note for the reviewer (optional)",
+    "approve": "Approve & publish",
+    "reject": "Reject",
+    "cancel": "Cancel request",
+    "approveTitle": "Approve review",
+    "rejectTitle": "Reject review",
+    "decisionNote": "Decision note (optional)",
+    "pendingTitle": "This article is under review",
+    "historyTitle": "Review history",
+    "status_pending": "Pending review",
+    "status_approved": "Approved",
+    "status_rejected": "Rejected",
+    "status_cancelled": "Cancelled"
   }
 }

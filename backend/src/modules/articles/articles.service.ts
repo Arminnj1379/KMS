@@ -442,33 +442,65 @@ export class ArticlesService {
     if (!actorObjectId) throw new NotFoundException('کاربر یافت نشد');
     const article = await this.findArticle(access.kbId, articleIdOrSlug);
     if (!article) throw new NotFoundException('مقاله یافت نشد');
-    if (!from.includes(article.status)) {
+    return withTransaction(this.connection, (tx) =>
+      this.flipStatusInSession({
+        kbId: access.kbId,
+        articleId: article._id,
+        expectedVersion: article.version,
+        from,
+        to,
+        changelog,
+        actorId: actorObjectId,
+        session: tx,
+      }),
+    );
+  }
+
+  /**
+   * Session-aware status flip + immutable snapshot. No permission check —
+   * the caller verified access (used by the approval workflow so the article
+   * flip, snapshot, review-request write and history row commit atomically).
+   * Exported for approval-workflow (direction: approval → articles).
+   */
+  async flipStatusInSession(input: {
+    kbId: Types.ObjectId;
+    articleId: Types.ObjectId;
+    expectedVersion: number;
+    from: string[];
+    to: string;
+    changelog: string;
+    actorId: Types.ObjectId;
+    session: ClientSession;
+  }) {
+    const article = (await this.articleModel
+      .findOne({ _id: input.articleId, knowledgeBaseId: input.kbId, deletedAt: null })
+      .session(input.session)
+      .lean()) as unknown as ArticleLean | null;
+    if (!article) throw new NotFoundException('مقاله یافت نشد');
+    if (!input.from.includes(article.status)) {
       throw new UnprocessableEntityException(`تغییر وضعیت از «${article.status}» مجاز نیست`);
     }
     const now = new Date();
-    const updated = await withTransaction(this.connection, async (tx) => {
-      const next = (await this.articleModel
-        .findOneAndUpdate(
-          { _id: article._id, version: article.version },
-          {
-            $set: {
-              status: to,
-              ...(to === 'published' ? { publishedAt: now } : {}),
-              ...(article.status === 'published' && to !== 'published' && to !== 'archived'
-                ? { publishedAt: null }
-                : {}),
-            },
-            $inc: { version: 1 },
+    const next = (await this.articleModel
+      .findOneAndUpdate(
+        { _id: article._id, version: input.expectedVersion },
+        {
+          $set: {
+            status: input.to,
+            ...(input.to === 'published' ? { publishedAt: now } : {}),
+            ...(article.status === 'published' && input.to !== 'published' && input.to !== 'archived'
+              ? { publishedAt: null }
+              : {}),
           },
-          { new: true },
-        )
-        .session(tx)
-        .lean()) as unknown as ArticleLean | null;
-      if (!next) throw new ConflictException('نسخه مقاله تغییر کرده است؛ لطفاً بازخوانی کنید');
-      await this.insertSnapshot(next, actorObjectId, changelog, tx);
-      return next;
-    });
-    return this.toDto(updated, await this.tagNamesById(updated.tagIds));
+          $inc: { version: 1 },
+        },
+        { new: true },
+      )
+      .session(input.session)
+      .lean()) as unknown as ArticleLean | null;
+    if (!next) throw new ConflictException('نسخه مقاله تغییر کرده است؛ لطفاً بازخوانی کنید');
+    await this.insertSnapshot(next, input.actorId, input.changelog, input.session);
+    return this.toDto(next, await this.tagNamesById(next.tagIds));
   }
 
   async publish(orgId: string, userId: string, orgRole: string, kb: string, id: string) {

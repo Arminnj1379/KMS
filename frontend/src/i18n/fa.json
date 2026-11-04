@@ -3,6 +3,7 @@
   "nav": {
     "dashboard": "پیشخوان",
     "knowledgeBases": "پایگاه‌های دانش",
+    "reviews": "بررسی‌ها",
     "search": "جست‌وجو",
     "admin": "مدیریت",
     "profile": "پروفایل"
@@ -130,5 +131,28 @@
     "from": "از",
     "to": "تا",
     "titleChanged": "عنوان تغییر کرده است"
+  },
+  "review": {
+    "inboxTitle": "کارتابل بررسی",
+    "assignedToMe": "ارجاع‌شده به من",
+    "myRequests": "درخواست‌های من",
+    "submit": "ارسال برای بررسی",
+    "submitTitle": "ارسال مقاله برای بررسی",
+    "reviewer": "داور",
+    "pickReviewer": "داور را انتخاب کنید…",
+    "noEligibleReviewer": "عضوی با نقش بررسی‌کننده یا مدیر در این پایگاه دانش وجود ندارد",
+    "commentOptional": "توضیح برای داور (اختیاری)",
+    "approve": "تأیید و انتشار",
+    "reject": "رد",
+    "cancel": "لغو درخواست",
+    "approveTitle": "تأیید بررسی",
+    "rejectTitle": "رد بررسی",
+    "decisionNote": "یادداشت تصمیم (اختیاری)",
+    "pendingTitle": "این مقاله در حال بررسی است",
+    "historyTitle": "سوابق بررسی",
+    "status_pending": "در انتظار بررسی",
+    "status_approved": "تأییدشده",
+    "status_rejected": "ردشده",
+    "status_cancelled": "لغوشده"
   }
 }

@@ -92,6 +92,16 @@ Context: Autosave fires every few seconds; snapshotting every write would flood 
 Decision: `PATCH articles` stores an immutable snapshot only when the client sends `changelog` (explicit "save version" via the editor's version-note field or the history card's snapshot button). Every status transition (publish/unpublish/archive/restore) always snapshots with a server-generated changelog. Manual `POST versions` snapshots the current state on demand. Restore never rewrites history — it copies a snapshot into a NEW article version (which itself snapshots when a changelog is present).
 Consequences: History stays meaningful; autosaves only bump the monotonic counter. Tests assert snapshot-on-changelog, no-snapshot-on-autosave, snapshot-on-transition, restore-creates-new-version.
 
+## D-021 Review assignment + decision rights — 2026-11-04
+Context: Contributors must get reviews without handing every draft to managers; managers keep override.
+Decision: Submitter (manager/contributor) assigns a reviewer who must be an org member AND (KB member with `reviewer`/`manager` role OR org-admin). Self-review → 422. One pending request per article → 409. Decide (approve/reject) requires the assigned reviewer or manager/org-admin (403 otherwise); cancel requires the requester or manager (403 otherwise). Stale decisions (non-pending request, or article left `in_review` via a direct manager transition) → 422.
+Consequences: Reviewer role finally used; managers can always unblock. Direct manager transitions (publish/archive/…) bypass review rows — documented debt, not silent: deciding on them 422s and the requester/manager cancels.
+
+## D-022 Notifications as an injected seam (Phase 8 preview) — 2026-11-04
+Context: ARCHITECTURE D-005 promises an async seam (`NotificationsPort`); Phase 8 builds persistence + inbox.
+Decision: `common/notifications` exports `NOTIFICATIONS_PORT` + abstract `NotificationsPort.notify()`; Phase 6 ships a logging default and calls it best-effort post-commit on submit/approve/reject/cancel (failures logged, never fail the request). Persistence + Bell UI land in Phase 8 behind the same token.
+Consequences: Unit tests assert hook payloads; swapping in a DB/BullMQ implementation touches no review logic.
+
 ## D-020 Local storage driver for offline/registry-blocked environments — 2026-11-04
 Context: `StorageService` targets S3/MinIO, but the sandbox registry denies `minio/*` pulls, so the `s3` driver cannot be verified live here.
 Decision: Add a `local` filesystem driver behind the same seam (`STORAGE_DRIVER=s3|local`, default `s3`). Local mode stores bytes under `UPLOADS_DIR/<orgId>/` with a mime sidecar; the client PUTs bytes to `PUT documents/upload/:key` and downloads stream through `GET documents/:id/file` (auth-guarded, no CORS/presign needed). S3 mode keeps presigned PUT/GET with the server never proxying bytes. Compose/prod stay on `s3`; local is for dev verification and offline laptops (single replica only).

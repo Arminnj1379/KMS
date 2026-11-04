@@ -95,6 +95,17 @@ export class KnowledgeBasesService {
     }
   }
 
+  /**
+   * Effective KB role of an arbitrary user (null when not a member).
+   * Exported for approval workflow (reviewer eligibility). Own model only.
+   */
+  async getMemberRole(kbId: Types.ObjectId, userId: Types.ObjectId): Promise<KbRoleName | null> {
+    const member = await this.kbMemberModel
+      .findOne({ knowledgeBaseId: kbId, userId })
+      .lean();
+    return (member?.role as KbRoleName | undefined) ?? null;
+  }
+
   private async kbDto(kb: {
     _id: Types.ObjectId;
     title: string;

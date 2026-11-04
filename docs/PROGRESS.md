@@ -2,7 +2,7 @@
 
 > Updated after every phase (see task §10). Legend: ✅ done · 🟡 partial · ⬜ not started · 🛑 blocked.
 
-## Current: Phase 5 ✅ complete — next: Phase 6 Approval Workflow
+## Current: Phase 6 ✅ complete — next: Phase 7 Search
 
 | Phase | Status | Notes |
 |---|---|---|
@@ -13,7 +13,7 @@
 | 3 KB Foundation | ✅ | Backend: KB CRUD + members + nested categories (cycle-safe, org-isolated). Frontend: KB list/detail + category tree + member management. |
 | 4 Articles | ✅ | Backend: articles CRUD + optimistic 409 + tags + related + publish/archive state machine (org-isolated). Frontend: Tiptap editor + autosave + conflict dialog, list/view pages. |
 | 5 Documents & Versioning | ✅ | Backend: storage seam (s3/local) + documents intent/confirm + attachments + immutable versions + diff/restore. Frontend: attachments card + history card + changelog save. |
-| 6 Approval Workflow | ⬜ | — |
+| 6 Approval Workflow | ✅ | Backend: review state machine (submit/approve/reject/cancel) + history + notifications seam. Frontend: review inbox + article submit/banner/history. |
 | 7 Search | ⬜ | — |
 | 8 Notifications & Audit | ⬜ | — |
 | 9 Polish & Prod-readiness | ⬜ | — |
@@ -85,6 +85,16 @@
   - `tsc --noEmit` clean (api+web); backend `eslint` clean; `nest build` + `vite build` pass (bundle ~722kB, code-split still deferred to Phase 9).
   - live smoke vs local Mongo + `STORAGE_DRIVER=local` (port 3001, 33 checks): ready-storage-up / register / kb / article-v1 / changelog-v2 + snapshot / autosave-v3 + no-snapshot / manual-snapshot / version-detail / diff-hunks / publish + snapshot / restore-as-v5 / intent-bad-mime-422 / intent-ok / local-PUT-200 / confirm+attach / enriched-list / metadata-downloadUrl / byte-round-trip / detach-204 + empty / row-retained / confirm-no-bytes-422 / reader invite+login+add / reader-list-200 + attach-403 + versions-200 + snapshot-403. Two script-side issues found and fixed in-harness (confirm should carry filename/mime/size; PS5.1 `@(fn …)` argument-mode parsing quirk) — app behavior proven correct on replay + full re-run.
 - Debt: S3/MinIO path is unit-covered but not live-verified here (registry denies `minio/*` pulls); compose/prod stay on `s3`. Test data left in dev Mongo only (`p5*`/`p5b*` users/KBs/articles/docs; `uploads-smoke/` bytes on disk, gitignored). Pre-existing stray `:3000` node process (old code, `/ready` 503) predates this session — smoke ran on `:3001`. Next: Phase 6 Approval Workflow.
+
+## Phase 6 — completed 2026-11-04 ✅
+- Backend `common/notifications` seam: `NOTIFICATIONS_PORT` + abstract `NotificationsPort` + logging default (D-022, D-005); persistence + Bell UI land in Phase 8.
+- Backend `approval-workflow` module (depends on articles/kbs/permissions/notifications): single-choke-point state machine — `POST …/articles/:id/submit` (draft→in_review + pending request), `POST /review-requests/:id/{approve,reject}` (→published/draft; reviewer-or-manager), `POST …/cancel` (→draft; requester-or-manager), `GET /review-requests` org-scoped inbox (role=requester|reviewer + status + pagination), per-article `review-requests` + `history` lists. Every decision flips the article via a new session-aware `ArticlesService.flipStatusInSession` and writes request row + `workflow_history` row in ONE transaction, then notifies best-effort post-commit. Rules: one pending/article → 409; self-review → 422; reviewer must be org member + KB reviewer/manager (or org-admin); non-pending/stale decisions → 422; parties-or-manager read. `review_requests` schema denormalized (org/KB ids + titles) for single-query org-scoped inbox.
+- Frontend: `features/approval` (api/hooks/schemas + `SubmitReviewDialog`/`DecideDialog` RHF+Zod) + `/reviews` inbox page (assigned-to-me + my-requests, approve/reject/cancel) + nav entry; `ArticleViewPage` gains submit dialog (eligible-reviewer picker), pending banner + cancel, and review-history list; fa/en strings added.
+- Verification (all green, executed 2026-11-04):
+  - unit: **81/81** (16 new: reader/unrelated submit 403, non-draft 422, self-review 422, outsider/non-eligible reviewer 422, dup-pending 409, submit tx + history + notify, stranger-approve 403, settled 422, stale-article 422, approve/reject/cancel happy paths + history + notify payloads, stranger read/cancel 403, missing 404).
+  - `tsc --noEmit` clean (api+web); backend `eslint` clean; `nest build` + `vite build` pass (bundle ~735kB, code-split still deferred to Phase 9).
+  - live smoke vs local Mongo + `STORAGE_DRIVER=local` (port 3001, 40 checks): ready / register / kb / 4 invites + 4 logins / 3 member adds / draft-create / submit→in_review / resubmit-422 / stranger-approve-403 / approve→published / 2-row history / submit-published-422 / decide-settled-422 / reject→draft / cancel→draft / reader-submit-403 / self-review-422 / outsider-reviewer-422 / submit-a4 + archive + restore + resubmit-409 (true duplicate path) / reviewer+requester inboxes / manager-direct-publish regression / second-org register + cross-org-404 + empty-inbox. One app fix en route (`@HttpCode(200)` on action POSTs, matching articles-controller convention) + harness fixes (auth 10/min throttle → fewer logins, fresh identities per run).
+- Debt: direct manager transitions (publish/unpublish/…) don't write `workflow_history`/`audit_logs` (Phase 8 unification); notification rows not persisted yet (logging seam only); inbox titles snapshotted at submit (may go stale on rename); test data left in dev Mongo only (`p6*`/`p6d*` orgs/users/KBs/articles/requests). Next: Phase 7 Search.
 - [ ] Root: `docker-compose.yml`, `.env.example`, `.gitignore`, `README.md`, `package.json` (workspaces).
 - [ ] Backend scaffold + strict TS + lint + env + logging + filters + health + swagger + Prisma schema/seed.
 - [ ] Frontend scaffold + Tailwind + Router + Query + i18n + AppShell.

@@ -109,7 +109,7 @@ published ──unpublish──► draft (kb-manager+)
 any ──archive──► archived (kb-manager+; read-only thereafter except restore-to-draft)
 ```
 
-Enforced in `ApprovalWorkflowService.transition()` — single choke point, invalid transitions throw `UnprocessableEntity`. All transitions write `workflow_history` + `audit_logs` in the same transaction.
+Enforced in `ApprovalWorkflowService` — single choke point, invalid transitions throw `UnprocessableEntity`. Every review-driven transition flips the article, snapshots, and writes the review row + a `workflow_history` row in ONE transaction, then notifies via the seam (D-022). `audit_logs` writes and history rows for direct manager transitions (publish/unpublish/…) are deferred to Phase 8 (documented debt, not silent).
 
 ## 8. Storage & Files
 

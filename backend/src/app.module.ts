@@ -12,13 +12,15 @@ import { KnowledgeBasesModule } from './modules/knowledge-bases/knowledge-bases.
 import { ArticlesModule } from './modules/articles/articles.module';
 import { ArticleVersionsModule } from './modules/article-versions/article-versions.module';
 import { DocumentsModule } from './modules/documents/documents.module';
+import { ApprovalWorkflowModule } from './modules/approval-workflow/approval-workflow.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
 import { PermissionsModule } from './modules/permissions/permissions.module';
 import { UsersModule } from './modules/users/users.module';
 
 /**
- * Root wiring only. Module dependency direction:
- * users/organizations → permissions; identity stands alone (bootstrap).
+ * Root wiring only. Module dependency direction (AGENTS.md §2):
+ * approval → articles → knowledge-bases → organizations → users → identity;
+ * permissions/notifications are sinks. identity stands alone (bootstrap).
  * common/ never imports from modules/.
  * Persistence: global MongoModule (Mongoose) replaces PrismaModule.
  */
@@ -46,6 +48,7 @@ import { UsersModule } from './modules/users/users.module';
     ArticlesModule,
     ArticleVersionsModule,
     DocumentsModule,
+    ApprovalWorkflowModule,
     HealthModule,
   ],
   providers: [
