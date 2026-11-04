@@ -17,6 +17,22 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
+apiClient.interceptors.response.use(
+  (res) => res,
+  (error: unknown) => {
+    if (axios.isAxiosError(error) && error.response?.status === 401) {
+      const url = error.config?.url ?? '';
+      const isAuthRoute = url.includes('/auth/login') || url.includes('/auth/register');
+      if (!isAuthRoute) {
+        localStorage.removeItem('kms_access_token');
+        localStorage.removeItem('kms_refresh_token');
+        if (window.location.pathname !== '/login') window.location.assign('/login');
+      }
+    }
+    throw error;
+  },
+);
+
 export interface ApiErrorEnvelope {
   statusCode: number;
   message: string;

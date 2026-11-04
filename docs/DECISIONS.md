@@ -49,6 +49,15 @@ Consequences: compose has no redis service (documented; easy to add).
 Context: Codegen adds build coupling early.
 Decision: Hand-mirror server DTOs in `frontend/src/types/`; revisit codegen in Phase 9 if drift observed.
 
-## D-011 URI API versioning deferred to Phase 2 — 2026-11-04
-Context: Phase 1 ships only unversioned infra routes (`/health`, `/ready`, `/docs`).
-Decision: Enable `VersioningType.URI` when the first business controller (identity) lands; keep infra routes unversioned via version-neutral controllers.
+## D-011 No URI versioning in MVP — 2026-11-04 (supersedes the Phase 1 deferral note)
+Context: Single SPA client + single API deployable; no concurrent API versions needed.
+Decision: Ship unversioned routes under `/api`. Revisit versioning when a breaking change must coexist with an old client.
+
+## D-012 Custom JWT guard instead of Passport — 2026-11-04
+Context: Standard NestJS JWT auth pulls passport + strategies for a simple Bearer flow.
+Decision: Hand-rolled `JwtAuthGuard` (Bearer verify + single membership query) registered as global `APP_GUARD`; `RolesGuard` reads `@Roles()`. No passport dependency.
+Consequences: Less magic, strict types, testable without passport harnesses. Revisit if OAuth/SSO strategies land.
+
+## D-013 Public self-service registration — 2026-11-04
+Context: No external IdP; orgs must bootstrap themselves.
+Decision: `POST /auth/register` creates an isolated org with the caller as org-admin. Rate-limited (10/min). Revisit (invite-only + `ALLOW_PUBLIC_REGISTER` flag) if abuse appears.

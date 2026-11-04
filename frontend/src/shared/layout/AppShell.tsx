@@ -42,6 +42,12 @@ export function AppShell({ children }: { children?: ReactNode }): JSX.Element {
             <NavLink to="/search" className={({ isActive }) => navClass(isActive)}>
               {t('nav.search')}
             </NavLink>
+            <NavLink to="/admin" className={({ isActive }) => navClass(isActive)}>
+              {t('nav.admin')}
+            </NavLink>
+            <NavLink to="/profile" className={({ isActive }) => navClass(isActive)}>
+              {t('nav.profile')}
+            </NavLink>
           </nav>
           <div className="ms-auto flex items-center gap-2">
             <button

@@ -5,7 +5,7 @@
     "knowledgeBases": "پایگاه‌های دانش",
     "search": "جست‌وجو",
     "admin": "مدیریت",
-    "profile": "پرو profile"
+    "profile": "پروفایل"
   },
   "auth": {
     "login": "ورود",
@@ -13,7 +13,36 @@
     "email": "رایانامه",
     "password": "گذرواژه",
     "submit": "ورود به سامانه",
-    "welcome": "به سامانه مدیریت دانش خوش آمدید"
+    "welcome": "به سامانه مدیریت دانش خوش آمدید",
+    "noAccount": "حساب ندارید؟",
+    "hasAccount": "حساب دارید؟",
+    "register": "ثبت‌نام",
+    "registerSubmit": "ساخت حساب و سازمان",
+    "registerHint": "ثبت‌نام یک سازمان جدید می‌سازد و شما مدیر آن می‌شوید",
+    "fullName": "نام و نام خانوادگی",
+    "organizationName": "نام سازمان",
+    "confirmPassword": "تکرار گذرواژه"
+  },
+  "roles": { "orgAdmin": "مدیر سازمان", "member": "عضو" },
+  "profile": {
+    "title": "پروفایل",
+    "changePassword": "تغییر گذرواژه",
+    "currentPassword": "گذرواژه فعلی",
+    "newPassword": "گذرواژه جدید",
+    "reloginNotice": "گذرواژه تغییر کرد؛ برای ادامه دوباره وارد شوید"
+  },
+  "admin": {
+    "title": "مدیریت کاربران",
+    "forbidden": "این بخش فقط برای مدیران سازمان قابل مشاهده است",
+    "invite": "دعوت / ساخت کاربر",
+    "inviteSubmit": "افزودن کاربر",
+    "search": "جست‌وجو در کاربران…",
+    "role": "نقش",
+    "status": "وضعیت",
+    "active": "فعال",
+    "inactive": "غیرفعال",
+    "activate": "فعال‌سازی",
+    "deactivate": "غیرفعال‌سازی"
   },
   "common": {
     "loading": "در حال بارگذاری…",

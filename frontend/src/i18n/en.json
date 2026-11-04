@@ -13,7 +13,36 @@
     "email": "Email",
     "password": "Password",
     "submit": "Sign in",
-    "welcome": "Welcome to the Knowledge Management System"
+    "welcome": "Welcome to the Knowledge Management System",
+    "noAccount": "No account?",
+    "hasAccount": "Already have an account?",
+    "register": "Sign up",
+    "registerSubmit": "Create account and organization",
+    "registerHint": "Sign-up creates a new organization where you are the admin",
+    "fullName": "Full name",
+    "organizationName": "Organization name",
+    "confirmPassword": "Confirm password"
+  },
+  "roles": { "orgAdmin": "Org admin", "member": "Member" },
+  "profile": {
+    "title": "Profile",
+    "changePassword": "Change password",
+    "currentPassword": "Current password",
+    "newPassword": "New password",
+    "reloginNotice": "Password changed; please sign in again"
+  },
+  "admin": {
+    "title": "User management",
+    "forbidden": "This section is only visible to organization admins",
+    "invite": "Invite / create user",
+    "inviteSubmit": "Add user",
+    "search": "Search users…",
+    "role": "Role",
+    "status": "Status",
+    "active": "Active",
+    "inactive": "Inactive",
+    "activate": "Activate",
+    "deactivate": "Deactivate"
   },
   "common": {
     "loading": "Loading…",
