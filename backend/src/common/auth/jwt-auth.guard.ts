@@ -6,10 +6,14 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { InjectModel } from '@nestjs/mongoose';
 import { JwtService } from '@nestjs/jwt';
 import type { Request } from 'express';
+import { Model } from 'mongoose';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
-import { PrismaService } from '../prisma/prisma.service';
+import { Membership } from '../mongo/schemas/membership.schema';
+import { User } from '../mongo/schemas/user.schema';
+import { toObjectIdOrNull } from '../mongo/object-id';
 import type { AuthenticatedUser, OrgRole } from './types';
 
 interface AccessPayload {
@@ -38,7 +42,8 @@ export class JwtAuthGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     private readonly jwt: JwtService,
-    private readonly prisma: PrismaService,
+    @InjectModel(Membership.name) private readonly membershipModel: Model<Membership>,
+    @InjectModel(User.name) private readonly userModel: Model<User>,
   ) {}
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
@@ -60,17 +65,21 @@ export class JwtAuthGuard implements CanActivate {
     }
     if (!payload?.sub || !payload?.orgId) throw new UnauthorizedException('توکن نامعتبر است');
 
-    const membership = await this.prisma.membership.findUnique({
-      where: { organizationId_userId: { organizationId: payload.orgId, userId: payload.sub } },
-      include: { user: true },
-    });
-    if (!membership || !membership.user.isActive) {
+    const orgObjectId = toObjectIdOrNull(payload.orgId);
+    const userObjectId = toObjectIdOrNull(payload.sub);
+    if (!orgObjectId || !userObjectId) throw new UnauthorizedException('توکن نامعتبر است');
+    const membership = await this.membershipModel
+      .findOne({ organizationId: orgObjectId, userId: userObjectId })
+      .lean();
+    if (!membership) throw new UnauthorizedException('توکن نامعتبر یا منقضی شده است');
+    const user = await this.userModel.findById(userObjectId).lean();
+    if (!user || !user.isActive) {
       throw new UnauthorizedException('توکن نامعتبر یا منقضی شده است');
     }
     req.user = {
-      userId: membership.user.id,
-      email: membership.user.email,
-      orgId: membership.organizationId,
+      userId: user._id.toHexString(),
+      email: user.email,
+      orgId: membership.organizationId.toHexString(),
       orgRole: membership.role as OrgRole,
     };
     return true;

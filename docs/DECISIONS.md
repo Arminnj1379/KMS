@@ -61,3 +61,28 @@ Consequences: Less magic, strict types, testable without passport harnesses. Rev
 ## D-013 Public self-service registration — 2026-11-04
 Context: No external IdP; orgs must bootstrap themselves.
 Decision: `POST /auth/register` creates an isolated org with the caller as org-admin. Rate-limited (10/min). Revisit (invite-only + `ALLOW_PUBLIC_REGISTER` flag) if abuse appears.
+
+## D-014 MongoDB replaces PostgreSQL as the primary database — 2026-11-04
+Context: Product decision to move off PostgreSQL/Prisma; content is document-shaped (Tiptap JSON, versions, audit metadata).
+Decision: MongoDB 8 + Mongoose (`@nestjs/mongoose`) is the only application database. No polyglot persistence; Prisma/Postgres removed from app code, compose, env, and scripts.
+Consequences: FK enforcement moves to services + tests; `citext` replaced by lowercase-on-write; FTS replaced by a Mongo text index behind the same swappable `SearchService` seam; single-node replica set `rs0` is mandatory (transactions).
+
+## D-015 Single-node replica set for transactions — 2026-11-04
+Context: Multi-document atomicity (register, refresh rotation, dept move, KB cascade) requires transactions, which need a replica set.
+Decision: Compose runs `mongo --replSet rs0` + one-shot `mongo-init` (`rs.initiate`, idempotent). App uses `session.withTransaction()` only where genuinely multi-document; standalone Mongo is unsupported.
+Consequences: `mongo-init` must succeed before transactional smoke tests; integration test asserts a commit through the configured URI.
+
+## D-016 Global Mongoose models replace global PrismaService — 2026-11-04
+Context: `PrismaService` was `@Global()`; services and guards depended on it. Mongoose models must be injectable with the same ergonomics without leaking documents across the codebase.
+Decision: `common/mongo/MongoModule` (`@Global()`) owns the connection + registers all schemas; services inject `Model<T>` and always `.lean()` + map to plain DTO shapes. No generic repositories/base CRUD classes; no Mongoose documents cross service boundaries.
+Consequences: Module dependency direction unchanged (users/organizations → permissions; identity standalone); `common/` still never imports from `modules/`.
+
+## D-017 Join collections eliminated via arrays — 2026-11-04
+Context: PG `article_tags` / `article_attachments` joins have no document equivalent.
+Decision: `articles.tagIds: ObjectId[]` (tags stay org-owned) and `articles.attachments[]` (embedded `{documentId, createdBy, createdAt}` links; `documents` retain their own lifecycle). KB delete cascades in a transaction.
+Consequences: Tag rename stays single-doc; attachment links are bounded per article (no 16MB risk).
+
+## D-018 Email/slug normalization replaces citext — 2026-11-04
+Context: PG used `citext` for `users.email` / `tags.name`.
+Decision: Lowercase + trim on write and on lookup (`normalizeEmail`, slug DTOs lowercased); unique indexes on the normalized value.
+Consequences: Case-variant duplicates impossible; display values keep original casing where needed (fullName, tag name).

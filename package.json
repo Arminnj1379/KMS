@@ -13,11 +13,9 @@
     "build": "npm run build --workspace=backend && npm run build --workspace=frontend",
     "build:api": "npm run build --workspace=backend",
     "build:web": "npm run build --workspace=frontend",
-    "typecheck": "npx tsc --noEmit -p backend && npx tsc --noEmit -p frontend",
+    "typecheck": "tsc --noEmit -p backend && tsc --noEmit -p frontend",
     "test": "npm test --workspace=backend",
-    "prisma:validate": "npx prisma validate --schema=backend/prisma/schema.prisma",
-    "prisma:migrate": "npx prisma migrate dev --schema=backend/prisma/schema.prisma",
-    "prisma:seed": "npm run prisma:seed --workspace=backend"
+    "db:seed": "npm run db:seed --workspace=backend"
   },
   "engines": {
     "node": ">=20"

@@ -1,102 +1,156 @@
-# Database Design — KMS (PostgreSQL 16 + Prisma)
+# Database Design — KMS (MongoDB 8 + Mongoose)
 
-> Conventions: `snake_case` tables via `@@map`, UUID PKs (`uuid_generate_v4`, Prisma `uuid()`), `created_at/updated_at` on all tables, soft-delete only for `articles` (`deleted_at`) and `documents`; everything else hard-delete with FK restrict where history matters. All money/IDs exact; timestamps `timestamptz`.
+> Authoritative: this file + `backend/src/common/mongo/schemas/*`.
+> Status: migrated from PostgreSQL/Prisma (see Appendix A for the PG→Mongo mapping and Step-A plan).
+> Conventions: camelCase fields; `_id: ObjectId` (API exposes `id: string`); `createdAt/updatedAt` via Mongoose `timestamps: true` on all collections; soft-delete only for `articles` (`deletedAt`); everything else hard-delete with app-level guards where history matters. Timestamps are JS `Date` (BSON datetime).
 
-## 1. ER Overview
+## 1. Why MongoDB (D-014)
+
+- Content is document-shaped (Tiptap JSON, version snapshots, notification payloads, audit metadata) — embedding and schema flexibility beat joins.
+- One primary database is kept (no polyglot ops): MongoDB is the **only** application database.
+- Trade-offs accepted: no FK enforcement (app-level checks + tests), no `citext` (lowercase-on-write + unique indexes), no trigram (text index + regex fallback), multi-document writes need a replica set (single-node `rs0` in compose).
+
+## 2. Collections overview
 
 ```
-organizations 1──* departments
+organizations 1──* departments (self-ref via parentId)
 organizations 1──* memberships *──1 users
-organizations 1──* knowledge_bases 1──* categories (self-ref) 
-knowledge_bases 1──* kb_members *──1 users
-knowledge_bases 1──* articles 1──* article_versions
-articles *──* tags (article_tags)
-articles 1──* article_attachments *──1 documents
-articles 1──* review_requests 1──* workflow_history
-articles 1──* comments
-users 1──* notifications
-* ──* audit_logs (polymorphic: resource_type + resource_id, no FK)
 users 1──* sessions (refresh families)
+organizations 1──* knowledgeBases 1──* categories (self-ref)
+knowledgeBases 1──* kbMembers *──1 users
+knowledgeBases 1──* articles 1──* articleVersions
+articles ──* tags (via articles.tagIds[], no join collection)
+articles ──* documents (via articles.attachments[].documentId, documents retained after unlink)
+articles 1──* reviewRequests 1──* workflowHistory (per-article, separate)
+articles 1──* comments (flat + one-level parentId)
+users 1──* notifications
+auditLogs polymorphic (organizationId?, actorId?, resourceType + resourceId string, no FK)
 ```
 
-## 2. Tables (authoritative — mirrors `prisma/schema.prisma`)
+17 collections: `users, organizations, memberships, departments, sessions, knowledgeBases, kbMembers, categories, articles, articleVersions, tags, documents, reviewRequests, workflowHistory, comments, notifications, auditLogs`.
+Eliminated joins (vs PG): `article_tags` → `articles.tagIds: ObjectId[]`; `article_attachments` → `articles.attachments[]` (embedded link rows).
 
-### organizations
-`id uuid pk, name text, slug citext unique, description text?, logo_url text?, created_at, updated_at`
-Index: `slug unique`.
+## 3. Embedding vs referencing (D-017)
 
-### departments
-`id uuid pk, organization_id fk→organizations cascade, parent_id fk→departments self set-null, name text, slug text, path ltree-ish text (materialized '/root/child'), created_at, updated_at`
-Unique: `(organization_id, slug)`. Index: `(organization_id, parent_id)`.
+| Relationship | Choice | Reason |
+|---|---|---|
+| org → departments | separate `departments` | unbounded per org, subtree queries, independent pagination |
+| user ↔ org (membership) | separate `memberships` | many-to-many, queried both directions, role filtering, pagination |
+| user → sessions | separate `sessions` | high churn, TTL-ish lifecycle, family queries; embedding would bloat user docs |
+| KB → members | separate `kbMembers` | same as memberships (role-filtered roster) |
+| KB → categories | separate `categories` | tree ops (move/cycle checks), position ordering, subtree queries |
+| KB → articles | separate `articles` (+ denormalized `organizationId` for scoping) | unbounded, independently paged/searched; org denormalized so every business query filters `organizationId` without a KB lookup |
+| article → versions | separate `articleVersions` (immutable) | unbounded growth; embedding would breach the 16MB document limit; insert-only enforced in service + test |
+| article ↔ tags | `articles.tagIds[]` + separate `tags` | tags owned by org (shared across KBs); array of refs avoids a join collection; tag rename stays single-doc |
+| article ↔ documents | separate `documents` + embedded `articles.attachments[{documentId,createdBy,createdAt}]` | documents have own lifecycle (retained for audit after unlink); per-article links are few (bounded) so embedding is safe |
+| article → reviewRequests / workflowHistory | separate collections | append-mostly, queried by article+status/time; embedding history in article would grow it forever |
+| article → comments | separate `comments` | unbounded, paged, one-level threads |
+| user → notifications | separate `notifications` | high volume, read-state updates, per-user paging |
+| * → auditLogs | separate `auditLogs`, no refs | polymorphic by design; `resourceId` stored as string (ObjectId hex where applicable) |
+
+Rule of thumb applied: embed only small, bounded, exclusively-owned sub-objects (attachment links); reference everything else. No deeply nested documents anywhere.
+
+## 4. Schemas (authoritative summary)
 
 ### users
-`id uuid pk, email citext unique, password_hash text, full_name text, avatar_url text?, locale text default 'fa', is_active bool default true, is_super_admin bool default false, last_login_at?, created_at, updated_at`
+`email` (lowercased, unique), `passwordHash`, `fullName`, `avatarUrl?`, `locale='fa'`, `isActive=true`, `isSuperAdmin=false`, `lastLoginAt?` + timestamps.
+Indexes: `{ email: 1 }` unique.
 
-### memberships (org membership + org role)
-`id uuid pk, organization_id fk cascade, user_id fk cascade, role text (org-admin|member), department_id fk? set-null, created_at, updated_at`
-Unique: `(organization_id, user_id)`. Index: `(user_id)`.
+### organizations
+`name`, `slug` (unique), `description?`, `logoUrl?` + timestamps.
+Indexes: `{ slug: 1 }` unique.
+
+### memberships
+`organizationId` ref→organizations (cascade delete in service), `userId` ref→users, `role` (`org-admin|member`), `departmentId?` ref→departments (null on department delete, app-enforced) + `createdAt/updatedAt`.
+Indexes: `{ organizationId: 1, userId: 1 }` unique; `{ userId: 1 }`; `{ organizationId: 1, role: 1 }`.
+
+### departments
+`organizationId` ref, `parentId?` self-ref, `name`, `slug`, `description?`, `path` (materialized `/root/child`), `depth` + timestamps.
+Indexes: `{ organizationId: 1, slug: 1 }` unique; `{ organizationId: 1, parentId: 1 }`; `{ organizationId: 1, path: 1 }` (subtree prefix moves).
 
 ### sessions (refresh families)
-`id uuid pk, user_id fk cascade, refresh_hash text (sha256), family_id uuid, expires_at, revoked_at?, ip text?, user_agent text?, created_at`
-Index: `(user_id)`, `(family_id)`.
+`userId` ref→users, `refreshHash` (sha256 hex, unique), `familyId` (random hex string), `expiresAt`, `revokedAt?`, `ip?`, `userAgent?`, `createdAt`.
+Indexes: `{ refreshHash: 1 }` unique; `{ familyId: 1 }`; `{ userId: 1 }`; `{ expiresAt: 1 }` (expiry scans).
 
-### knowledge_bases
-`id uuid pk, organization_id fk cascade, title text, slug text, description text?, icon text?, visibility text (private|internal|public) default internal, owner_id fk→users restrict, created_at, updated_at, deleted_at? (not in MVP — hard delete with confirm; documented decision)`
-Unique: `(organization_id, slug)`. Index: `(organization_id, visibility)`. FTS: `search_vector tsvector GENERATED` (migration SQL).
+### knowledgeBases
+`organizationId` ref, `title`, `slug`, `description?`, `icon?`, `visibility` (`private|internal|public`, default `internal`), `ownerId` ref→users (restrict: owner reassignment required before user cleanup — app rule) + timestamps.
+Indexes: `{ organizationId: 1, slug: 1 }` unique; `{ organizationId: 1, visibility: 1 }`.
 
-### kb_members
-`id uuid pk, knowledge_base_id fk cascade, user_id fk cascade, role text (manager|contributor|reviewer|reader), created_at`
-Unique: `(knowledge_base_id, user_id)`.
+### kbMembers
+`knowledgeBaseId` ref, `userId` ref, `role` (`manager|contributor|reviewer|reader`), `createdAt`.
+Indexes: `{ knowledgeBaseId: 1, userId: 1 }` unique.
 
 ### categories
-`id uuid pk, knowledge_base_id fk cascade, parent_id fk self set-null, title text, slug text, description text?, position int default 0, path text (e.g. '/guides/backend'), depth int default 0, created_at, updated_at`
-Unique: `(knowledge_base_id, slug)`. Index: `(knowledge_base_id, parent_id, position)`.
+`knowledgeBaseId` ref, `parentId?` self-ref, `title`, `slug`, `description?`, `position=0`, `path`, `depth=0` + timestamps.
+Indexes: `{ knowledgeBaseId: 1, slug: 1 }` unique; `{ knowledgeBaseId: 1, parentId: 1, position: 1 }`; `{ knowledgeBaseId: 1, path: 1 }`.
 
 ### articles
-`id uuid pk, organization_id fk cascade, knowledge_base_id fk cascade, category_id fk? set-null, author_id fk restrict, title text, slug text, summary text?, content_json jsonb (tiptap doc), content_text text (plain, for search), content_html text? (sanitized cache), status text (draft|in_review|published|archived) default draft, version int default 1, view_count int default 0, published_at?, deleted_at?, created_at, updated_at`
-Unique: `(knowledge_base_id, slug)`. Indexes: `(knowledge_base_id, status, published_at desc)`, `(author_id)`, GIN on `search_vector`.
-`search_vector tsvector GENERATED ALWAYS AS (to_tsvector('simple', coalesce(title,'')||' '||coalesce(summary,'')||' '||coalesce(content_text,''))) STORED` (migration raw SQL; Prisma `Unsupported` passthrough).
+`organizationId` ref (denormalized scope — must equal the KB's org, enforced in service on create/move), `knowledgeBaseId` ref, `categoryId?` ref (null on category delete), `authorId` ref→users (restrict), `title`, `slug`, `summary?`, `contentJson` (Mixed, Tiptap doc), `contentText` (plain, search), `contentHtml?` (sanitized cache), `status` (`draft|in_review|published|archived`, default `draft`), `version=1`, `viewCount=0`, `tagIds: ObjectId[]` ref→tags, `attachments[{documentId,createdBy,createdAt}]`, `publishedAt?`, `deletedAt?` + timestamps.
+Indexes: `{ knowledgeBaseId: 1, slug: 1 }` unique; `{ knowledgeBaseId: 1, status: 1, publishedAt: -1 }`; `{ authorId: 1 }`; `{ organizationId: 1, status: 1, publishedAt: -1 }`; text `{ title: 'text', summary: 'text', contentText: 'text' }` (language `none` — Persian has no Mongo stemmer; relevance is keyword-based, swappable later per ARCHITECTURE §9).
 
-### article_versions (immutable)
-`id uuid pk, article_id fk cascade, version int, title text, summary text?, content_json jsonb, content_text text?, changelog text?, created_by fk restrict, created_at`
-Unique: `(article_id, version)`. Never updated/deleted by app code (DB revoke not needed in MVP; enforced in service + test).
+### articleVersions (immutable)
+`articleId` ref, `version`, `title`, `summary?`, `contentJson` (Mixed), `contentText?`, `changelog?`, `createdBy` ref→users, `createdAt` (no `updatedAt` — never updated).
+Indexes: `{ articleId: 1, version: 1 }` unique; `{ articleId: 1, createdAt: 1 }`.
 
-### tags / article_tags
-`tags: id uuid pk, organization_id fk cascade, name citext, slug text, created_at` Unique `(organization_id, slug)`.
-`article_tags: article_id fk cascade, tag_id fk cascade` PK composite.
+### tags
+`organizationId` ref, `name`, `slug` (lowercased on write) + `createdAt`.
+Indexes: `{ organizationId: 1, slug: 1 }` unique.
 
-### documents / article_attachments
-`documents: id uuid pk, organization_id fk cascade, uploader_id fk restrict, object_key text unique, filename text, mime text, size_bytes int, checksum_sha256 text?, created_at`
-`article_attachments: id uuid pk, article_id fk cascade, document_id fk cascade, created_by fk, created_at` Unique `(article_id, document_id)`.
+### documents
+`organizationId` ref, `uploaderId` ref→users (restrict), `objectKey` (unique), `filename`, `mime`, `sizeBytes`, `checksumSha256?`, `createdAt`.
+Indexes: `{ objectKey: 1 }` unique; `{ organizationId: 1, createdAt: -1 }`.
 
-### comments (article-scoped, MVP flat + optional parent for one-level threads)
-`id uuid pk, article_id fk cascade, author_id fk restrict, parent_id fk self cascade?, body text, created_at, updated_at`
-Index: `(article_id, created_at)`.
+### reviewRequests
+`articleId` ref, `requesterId` ref, `reviewerId` ref, `status` (`pending|approved|rejected|cancelled`), `comment?`, `decidedAt?` + timestamps.
+Indexes: `{ articleId: 1, status: 1 }`; `{ reviewerId: 1, status: 1 }`.
 
-### review_requests + workflow_history
-`review_requests: id uuid pk, article_id fk cascade, requester_id fk, reviewer_id fk, status text (pending|approved|rejected|cancelled) default pending, comment text?, decided_at?, created_at, updated_at` Index `(article_id, status)`, `(reviewer_id, status)`.
-`workflow_history: id uuid pk, article_id fk cascade, from_status text, to_status text, actor_id fk, comment text?, created_at` Index `(article_id, created_at)`.
+### workflowHistory (append-only)
+`articleId` ref, `fromStatus`, `toStatus`, `actorId` ref, `comment?`, `createdAt`.
+Indexes: `{ articleId: 1, createdAt: 1 }`.
+
+### comments
+`articleId` ref, `authorId` ref (restrict), `parentId?` self-ref (replies removed with parent — app cascade), `body` + timestamps.
+Indexes: `{ articleId: 1, createdAt: 1 }`.
 
 ### notifications
-`id uuid pk, user_id fk cascade, type text, title text, body text?, data jsonb?, is_read bool default false, created_at` Index `(user_id, is_read, created_at desc)`.
+`userId` ref, `type`, `title`, `body?`, `data?` (Mixed), `isRead=false`, `createdAt` (no `updatedAt` — read-state flips use `isRead` + a `readAt?` field if needed; MVP keeps `isRead` only).
+Indexes: `{ userId: 1, isRead: 1, createdAt: -1 }`.
 
-### audit_logs (append-only)
-`id uuid pk, organization_id fk? (nullable for login events), actor_id fk?, action text (e.g. article.publish), resource_type text, resource_id text, metadata jsonb?, ip text?, created_at` Index `(organization_id, created_at desc)`, `(resource_type, resource_id)`.
+### auditLogs (append-only)
+`organizationId?` (string ObjectId hex, no ref), `actorId?`, `action` (e.g. `article.publish`), `resourceType`, `resourceId` (string), `metadata?` (Mixed), `ip?`, `createdAt`.
+Indexes: `{ organizationId: 1, createdAt: -1 }`; `{ resourceType: 1, resourceId: 1 }`.
 
-## 3. Integrity Rules
+## 5. Integrity rules (app-enforced; no FKs in Mongo)
 
-- Every `articles.organization_id` must equal its KB's `organization_id` (enforced in service tx on create/move; DB trigger deferred — documented as tech debt with test coverage instead).
-- Deleting a KB requires explicit `?confirm=true` and cascades categories/articles/versions/attachments-links (documents retained for audit; orphan cleanup job out of scope).
-- `article_versions` insert-only: service never calls update/delete; integration test asserts row count monotonic.
-- Refresh `family_id` reuse (unknown hash presented) → revoke whole family.
+- `articles.organizationId` must equal its KB's `organizationId` — checked in service on create/move (same tech-debt note as PG era, covered by tests).
+- Deleting a KB requires explicit `?confirm=true` and removes categories/articles/versions/links in one transaction; `documents` rows are retained (orphan cleanup out of scope).
+- `articleVersions` insert-only: service never updates/deletes; test asserts row-count monotonicity.
+- Refresh `familyId` reuse (already-rotated hash presented) → whole family revoked.
+- Duplicate-key races (E11000) map to 409; null lookups map to 404 (never leak driver errors).
+- Invalid ObjectId strings from clients map to 404 (never 500 CastError).
 
-## 4. Index Strategy (query-driven)
+## 6. Index strategy (query-driven)
 
-- Auth: `users.email`, `sessions.family_id`, `memberships(user_id)`.
-- Lists: `articles(kb, status, published_at)`, `categories(kb, parent, position)`, `notifications(user, read, created)`.
-- Search: GIN `articles.search_vector`, GIN trigram on `articles.title` (`pg_trgm`), B-tree `article_tags(tag_id)`.
-- Audit: BRIN-ish btree on `audit_logs(created_at)` + composite org+created.
+- Auth: `users.email` unique; `sessions.refreshHash` unique + `familyId`; `memberships(userId)`.
+- Lists: `articles(kb,status,publishedAt)`, `articles(org,status,publishedAt)`, `categories(kb,parent,position)`, `notifications(user,read,created)`.
+- Search: text index `articles(title,summary,contentText)` + `articleTags` covered by multikey index on `tagIds` (add `{ tagIds: 1 }` when article module lands).
+- Audit: `auditLogs(org,created)` + `(resourceType,resourceId)`.
+- No speculative indexes: each index above traces to a service query in §4 consumers.
 
-## 5. Migrations
+## 7. Transactions (D-015)
 
-Prisma migrations (`backend/prisma/migrations/*`), plus `extensions.sql` enabling `pgcrypto, pg_trgm, unaccent, citext`. `search_vector` maintained via `GENERATED` column (no trigger needed on PG12+). Seed: demo org + admin (`admin@kms.local` / `ChangeMe123!`), one KB, categories, 3 articles, tags.
+- Single-node replica set `rs0` in compose (dev) and required wherever multi-document atomicity is needed; standalone Mongo is **not** supported for this app.
+- All multi-write flows use `session.withTransaction()`: register (user+org+membership+session), login (session+lastLoginAt), refresh rotation (revoke old + insert new), change-password (hash update + revoke all), department subtree move, KB delete cascade (Phase 3+).
+- Read-your-own-write and single-document updates never use transactions.
+
+## 8. Migrations & seed
+
+- No ORM migrations: schemas are code (`SchemaFactory`); indexes are declared in schema files and built by Mongoose on startup (`autoIndex: true` in dev/test; in production set `autoIndex: false` and run `npm run db:indexes` — Phase 9).
+- Seed (`backend/scripts/seed-mongo.ts`, idempotent upserts): demo org + admin (`admin@kms.local` / `ChangeMe123!`), one KB + admin `manager` membership. Credentials must change after first login.
+
+## Appendix A — PG→Mongo migration record (Step-A plan, executed)
+
+**Pre-migration PG state (inspected 2026-11-04):** 19 models in `prisma/schema.prisma`, 3 migration dirs; live compose PG held dev/test data only (2 orgs, 3 users, 3 memberships, 2 departments, 7 sessions, 1 KB) — no production data. Backup taken (`backups/pg-pre-mongo-*.dump`) before PG removal; restore procedure in `backups/README.md`. No data migration was needed beyond re-seeding Mongo.
+**Prisma touchpoints removed:** `@prisma/client` + `prisma` CLI, `backend/prisma/*`, `PrismaService/PrismaModule`, `DATABASE_URL`, all `prisma.*` query call-sites (identity, users, organizations, permissions, health, guards), Prisma error-code branches (P2002→E11000, P2025→null-check), specs mocking `PrismaService`.
+**Code changes:** `common/prisma/*` → `common/mongo/*` (global `MongoModule`, 17 schemas, `withTransaction` helper, error/object-id utils); services reimplemented on injected `Model<T>` with identical API contracts, business rules, and Persian error strings; `JwtAuthGuard` re-reads membership via Mongoose; `env.ts` requires `MONGODB_URI`; Dockerfile drops generate/migrate steps; compose swaps `db`→`mongo(+mongo-init rs0)`.
+**Risks & mitigations:** (1) lost FK cascades → service-level deletes + tests; (2) case-insensitive uniqueness → lowercase-on-write; (3) transaction support → mandatory rs0, integration test asserts `withTransaction` commits; (4) FTS regression → text index now, swappable search façade unchanged; (5) CastError 500s → ObjectId validation → 404.

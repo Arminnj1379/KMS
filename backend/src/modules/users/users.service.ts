@@ -4,8 +4,14 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
-import { PrismaService } from '../../common/prisma/prisma.service';
+import { InjectConnection, InjectModel } from '@nestjs/mongoose';
+import { FilterQuery, Model, Types, type Connection } from 'mongoose';
+import { Membership } from '../../common/mongo/schemas/membership.schema';
+import { User } from '../../common/mongo/schemas/user.schema';
+import { Department } from '../../common/mongo/schemas/department.schema';
+import { normalizeEmail, toObjectIdOrNull } from '../../common/mongo/object-id';
+import { throwConflictIfDuplicate } from '../../common/mongo/mongo-errors';
+import { withTransaction } from '../../common/mongo/transaction.helper';
 import type { SafeUser } from '../identity/identity.service';
 import { hashPassword } from '../identity/password.util';
 import { InviteUserDto, ListUsersQuery, UpdateMeDto, UpdateUserDto } from './dto/users.dto';
@@ -17,8 +23,17 @@ export interface OrgUserRow {
   memberSince: Date;
 }
 
+interface MembershipLean {
+  _id: Types.ObjectId;
+  organizationId: Types.ObjectId;
+  userId: Types.ObjectId;
+  role: string;
+  departmentId: Types.ObjectId | null;
+  createdAt: Date;
+}
+
 function safe(u: {
-  id: string;
+  _id: Types.ObjectId;
   email: string;
   fullName: string;
   avatarUrl: string | null;
@@ -26,7 +41,7 @@ function safe(u: {
   isActive: boolean;
 }): SafeUser {
   return {
-    id: u.id,
+    id: u._id.toHexString(),
     email: u.email,
     fullName: u.fullName,
     avatarUrl: u.avatarUrl,
@@ -41,92 +56,113 @@ function safe(u: {
  */
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    @InjectConnection() private readonly connection: Connection,
+    @InjectModel(User.name) private readonly userModel: Model<User>,
+    @InjectModel(Membership.name) private readonly membershipModel: Model<Membership>,
+    @InjectModel(Department.name) private readonly departmentModel: Model<Department>,
+  ) {}
+
+  private orgObjectId(orgId: string): Types.ObjectId | null {
+    return toObjectIdOrNull(orgId);
+  }
 
   async list(orgId: string, query: ListUsersQuery): Promise<{ data: OrgUserRow[]; total: number }> {
-    const where: Prisma.MembershipWhereInput = { organizationId: orgId };
+    const orgObjectId = this.orgObjectId(orgId);
+    if (!orgObjectId) return { data: [], total: 0 };
+    const filter: FilterQuery<Membership> = { organizationId: orgObjectId };
+
+    let userIds: Types.ObjectId[] | null = null;
     if (query.search) {
-      where.user = {
-        OR: [
-          { email: { contains: query.search, mode: 'insensitive' } },
-          { fullName: { contains: query.search, mode: 'insensitive' } },
-        ],
-      };
+      const rx = new RegExp(query.search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      const matched = await this.userModel
+        .find({ $or: [{ email: rx }, { fullName: rx }] })
+        .select('_id')
+        .lean();
+      userIds = matched.map((u) => u._id);
+      if (userIds.length === 0) return { data: [], total: 0 };
+      filter.userId = { $in: userIds };
     }
-    const [rows, total] = await this.prisma.$transaction([
-      this.prisma.membership.findMany({
-        where,
-        include: { user: true, department: true },
-        orderBy: { createdAt: 'asc' },
-        skip: (query.page - 1) * query.pageSize,
-        take: query.pageSize,
-      }),
-      this.prisma.membership.count({ where }),
+
+    const [rows, total] = await Promise.all([
+      this.membershipModel
+        .find(filter)
+        .sort({ createdAt: 1 })
+        .skip((query.page - 1) * query.pageSize)
+        .limit(query.pageSize)
+        .lean(),
+      this.membershipModel.countDocuments(filter),
     ]);
-    return {
-      data: rows.map((m) => ({
-        user: safe(m.user),
-        role: m.role,
-        department: m.department ? { id: m.department.id, name: m.department.name } : null,
-        memberSince: m.createdAt,
-      })),
-      total,
-    };
+    return { data: await this.toRows(rows), total };
   }
 
   /** Org-admin invite: attaches an existing user or creates a new one. */
   async invite(orgId: string, dto: InviteUserDto): Promise<OrgUserRow> {
-    if (dto.departmentId) await this.assertDepartmentInOrg(orgId, dto.departmentId);
+    const orgObjectId = this.orgObjectId(orgId);
+    if (!orgObjectId) throw new NotFoundException('سازمان یافت نشد');
+    if (dto.departmentId) await this.assertDepartmentInOrg(orgObjectId, dto.departmentId);
 
-    const existingUser = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    const existingUser = await this.userModel.findOne({ email: normalizeEmail(dto.email) }).lean();
     if (existingUser) {
-      const dup = await this.prisma.membership.findUnique({
-        where: { organizationId_userId: { organizationId: orgId, userId: existingUser.id } },
-      });
+      const dup = await this.membershipModel
+        .findOne({ organizationId: orgObjectId, userId: existingUser._id })
+        .lean();
       if (dup) throw new ConflictException('این کاربر قبلاً عضو سازمان است');
-      const m = await this.prisma.membership.create({
-        data: {
-          organizationId: orgId,
-          userId: existingUser.id,
+      try {
+        const m = await this.membershipModel.create({
+          organizationId: orgObjectId,
+          userId: existingUser._id,
           role: dto.role,
-          departmentId: dto.departmentId,
-        },
-        include: { user: true, department: true },
-      });
-      return this.row(m);
+          departmentId: dto.departmentId ? toObjectIdOrNull(dto.departmentId) : null,
+        });
+        return this.toRow(m.toObject() as unknown as MembershipLean & { _id: Types.ObjectId });
+      } catch (error) {
+        throwConflictIfDuplicate(error, 'این کاربر قبلاً عضو سازمان است');
+        throw error;
+      }
     }
 
     try {
-      const m = await this.prisma.$transaction(async (tx) => {
-        const user = await tx.user.create({
-          data: { email: dto.email, fullName: dto.fullName, passwordHash: await hashPassword(dto.password) },
-        });
-        return tx.membership.create({
-          data: {
-            organizationId: orgId,
-            userId: user.id,
-            role: dto.role,
-            departmentId: dto.departmentId,
-          },
-          include: { user: true, department: true },
-        });
+      const created = await withTransaction(this.connection, async (tx) => {
+        const [user] = await this.userModel.create(
+          [
+            {
+              email: normalizeEmail(dto.email),
+              fullName: dto.fullName,
+              passwordHash: await hashPassword(dto.password),
+            },
+          ],
+          { session: tx },
+        );
+        if (!user) throw new ConflictException('امکان ساخت کاربر وجود ندارد');
+        const [m] = await this.membershipModel.create(
+          [
+            {
+              organizationId: orgObjectId,
+              userId: user._id,
+              role: dto.role,
+              departmentId: dto.departmentId ? toObjectIdOrNull(dto.departmentId) : null,
+            },
+          ],
+          { session: tx },
+        );
+        if (!m) throw new ConflictException('امکان ساخت کاربر وجود ندارد');
+        return m._id;
       });
-      return this.row(m);
+      const m = await this.membershipModel.findById(created).lean();
+      if (!m) throw new NotFoundException('کاربر یافت نشد');
+      return this.toRow(m);
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        throw new ConflictException('این ایمیل قبلاً ثبت شده است');
-      }
+      if (error instanceof ConflictException || error instanceof NotFoundException) throw error;
+      throwConflictIfDuplicate(error, 'این ایمیل قبلاً ثبت شده است');
       throw error;
     }
   }
 
   async findOne(orgId: string, userId: string): Promise<OrgUserRow> {
-    const m = await this.prisma.membership.findUnique({
-      where: { organizationId_userId: { organizationId: orgId, userId } },
-      include: { user: true, department: true },
-    });
+    const m = await this.findMembership(orgId, userId);
     if (!m) throw new NotFoundException('کاربر یافت نشد');
-    return this.row(m);
+    return this.toRow(m);
   }
 
   /**
@@ -134,76 +170,112 @@ export class UsersService {
    * deactivate the last remaining org-admin.
    */
   async update(orgId: string, callerId: string, targetId: string, dto: UpdateUserDto): Promise<OrgUserRow> {
-    const target = await this.prisma.membership.findUnique({
-      where: { organizationId_userId: { organizationId: orgId, userId: targetId } },
-      include: { user: true },
-    });
+    const orgObjectId = this.orgObjectId(orgId);
+    const targetObjectId = toObjectIdOrNull(targetId);
+    if (!orgObjectId || !targetObjectId) throw new NotFoundException('کاربر یافت نشد');
+    const target = await this.membershipModel
+      .findOne({ organizationId: orgObjectId, userId: targetObjectId })
+      .lean();
     if (!target) throw new NotFoundException('کاربر یافت نشد');
 
-    if (dto.departmentId) await this.assertDepartmentInOrg(orgId, dto.departmentId);
+    if (dto.departmentId) await this.assertDepartmentInOrg(orgObjectId, dto.departmentId);
     if (targetId === callerId && dto.isActive === false) {
       throw new UnprocessableEntityException('نمی‌توانید حساب خودتان را غیرفعال کنید');
     }
     const demotingAdmin = target.role === 'org-admin' && dto.role && dto.role !== 'org-admin';
     const deactivatingAdmin = target.role === 'org-admin' && dto.isActive === false;
-    if (demotingAdmin || deactivatingAdmin) await this.assertNotLastAdmin(orgId, targetId);
+    if (demotingAdmin || deactivatingAdmin) await this.assertNotLastAdmin(orgObjectId, targetId);
 
-    const updated = await this.prisma.$transaction(async (tx) => {
+    await withTransaction(this.connection, async (tx) => {
       if (dto.fullName !== undefined || dto.isActive !== undefined) {
-        await tx.user.update({
-          where: { id: targetId },
-          data: {
+        await this.userModel.updateOne(
+          { _id: targetObjectId },
+          {
             ...(dto.fullName !== undefined ? { fullName: dto.fullName } : {}),
             ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
           },
-        });
+          { session: tx },
+        );
       }
-      return tx.membership.update({
-        where: { organizationId_userId: { organizationId: orgId, userId: targetId } },
-        data: {
+      await this.membershipModel.updateOne(
+        { organizationId: orgObjectId, userId: targetObjectId },
+        {
           ...(dto.role ? { role: dto.role } : {}),
-          ...(dto.departmentId !== undefined ? { departmentId: dto.departmentId } : {}),
+          ...(dto.departmentId !== undefined
+            ? { departmentId: dto.departmentId ? toObjectIdOrNull(dto.departmentId) : null }
+            : {}),
         },
-        include: { user: true, department: true },
-      });
+        { session: tx },
+      );
     });
-    return this.row(updated);
+    const updated = await this.membershipModel
+      .findOne({ organizationId: orgObjectId, userId: targetObjectId })
+      .lean();
+    if (!updated) throw new NotFoundException('کاربر یافت نشد');
+    return this.toRow(updated);
   }
 
   async updateMe(userId: string, dto: UpdateMeDto): Promise<SafeUser> {
-    const user = await this.prisma.user.update({
-      where: { id: userId },
-      data: {
-        ...(dto.fullName !== undefined ? { fullName: dto.fullName } : {}),
-        ...(dto.avatarUrl !== undefined ? { avatarUrl: dto.avatarUrl } : {}),
-        ...(dto.locale !== undefined ? { locale: dto.locale } : {}),
-      },
-    });
+    const id = toObjectIdOrNull(userId);
+    if (!id) throw new NotFoundException('کاربر یافت نشد');
+    const user = await this.userModel
+      .findByIdAndUpdate(
+        id,
+        {
+          ...(dto.fullName !== undefined ? { fullName: dto.fullName } : {}),
+          ...(dto.avatarUrl !== undefined ? { avatarUrl: dto.avatarUrl } : {}),
+          ...(dto.locale !== undefined ? { locale: dto.locale } : {}),
+        },
+        { new: true },
+      )
+      .lean();
+    if (!user) throw new NotFoundException('کاربر یافت نشد');
     return safe(user);
   }
 
-  private row(m: {
-    user: Parameters<typeof safe>[0];
-    role: string;
-    department: { id: string; name: string } | null;
-    createdAt: Date;
-  }): OrgUserRow {
+  private async findMembership(orgId: string, userId: string) {
+    const orgObjectId = this.orgObjectId(orgId);
+    const userObjectId = toObjectIdOrNull(userId);
+    if (!orgObjectId || !userObjectId) return null;
+    return this.membershipModel
+      .findOne({ organizationId: orgObjectId, userId: userObjectId })
+      .lean();
+  }
+
+  private async toRow(m: MembershipLean): Promise<OrgUserRow> {
+    const [user, department] = await Promise.all([
+      this.userModel.findById(m.userId).lean(),
+      m.departmentId ? this.departmentModel.findById(m.departmentId).lean() : null,
+    ]);
+    if (!user) throw new NotFoundException('کاربر یافت نشد');
     return {
-      user: safe(m.user),
+      user: safe(user),
       role: m.role,
-      department: m.department ? { id: m.department.id, name: m.department.name } : null,
+      department: department ? { id: department._id.toHexString(), name: department.name } : null,
       memberSince: m.createdAt,
     };
   }
 
-  private async assertDepartmentInOrg(orgId: string, departmentId: string): Promise<void> {
-    const dept = await this.prisma.department.findFirst({ where: { id: departmentId, organizationId: orgId } });
+  private async toRows(members: MembershipLean[]): Promise<OrgUserRow[]> {
+    const rows: OrgUserRow[] = [];
+    for (const m of members) rows.push(await this.toRow(m));
+    return rows;
+  }
+
+  private async assertDepartmentInOrg(orgId: Types.ObjectId, departmentId: string): Promise<void> {
+    const deptId = toObjectIdOrNull(departmentId);
+    const dept = deptId
+      ? await this.departmentModel.findOne({ _id: deptId, organizationId: orgId }).lean()
+      : null;
     if (!dept) throw new NotFoundException('دپارتمان یافت نشد');
   }
 
-  private async assertNotLastAdmin(orgId: string, excludedUserId: string): Promise<void> {
-    const remaining = await this.prisma.membership.count({
-      where: { organizationId: orgId, role: 'org-admin', userId: { not: excludedUserId } },
+  private async assertNotLastAdmin(orgId: Types.ObjectId, excludedUserId: string): Promise<void> {
+    const excluded = toObjectIdOrNull(excludedUserId);
+    const remaining = await this.membershipModel.countDocuments({
+      organizationId: orgId,
+      role: 'org-admin',
+      ...(excluded ? { userId: { $ne: excluded } } : {}),
     });
     if (remaining === 0) {
       throw new UnprocessableEntityException('سازمان باید حداقل یک مدیر داشته باشد');

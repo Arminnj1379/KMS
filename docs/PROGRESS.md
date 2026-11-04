@@ -2,13 +2,14 @@
 
 > Updated after every phase (see task §10). Legend: ✅ done · 🟡 partial · ⬜ not started · 🛑 blocked.
 
-## Current: Phase 2 ✅ complete — next: Phase 3 KB Foundation
+## Current: Migration ✅ complete — next: Phase 3 KB Foundation
 
 | Phase | Status | Notes |
 |---|---|---|
 | Phase 0 Inspection & Design | ✅ | Empty repo confirmed; 7 docs; module DAG + ER + FTS + state machine. |
 | Phase 1 Foundation | ✅ | Verified green (builds, tsc, 3 tests, runtime health/ready/docs, compose db). MinIO pull blocked in sandbox (documented). |
 | 2 Identity & Access | ✅ | Backend: identity/users/orgs/permissions modules, global JWT+roles+throttle guards. Frontend: login/register/profile/admin, RequireAuth, 401 handling. |
+| PG → Mongo migration | ✅ | Mongoose 8 + MongoDB 8 (rs0) is the only app DB. Prisma/Postgres removed; 24/24 smoke + 28/28 tests green on Mongo (see below). |
 | 3 KB Foundation | ⬜ | — |
 | 4 Articles | ⬜ | — |
 | 5 Documents & Versioning | ⬜ | — |
@@ -42,6 +43,16 @@
   - live smoke vs compose Postgres (24 checks): register/409-dup/login/me/wrong-pw-401/no-token-401/cross-org-404/invite/member-403/roster-200/rotation/reuse-401/family-dead-401/change-pw + old-401/new-200/last-admin-422/dept CRUD + cycle-422 + nonempty-422/logout + refresh-401. One harness-side 401 (missing header) re-run correctly → 422.
 - Debt: no auto refresh-token rotation on the client (401 → re-login; acceptable with 15m access); multi-org session switching unresolved (first membership wins); promotion to org-admin unguarded by design.
 - Test data left in dev DB only: demo org + `p2a/p2b` orgs. Next: Phase 3 KB Foundation.
+
+## Migration PostgreSQL → MongoDB — completed 2026-11-04 ✅
+- Pre-migration: inspected live PG (dev/test data only: 2 orgs, 3 users, 3 memberships, 2 departments, 7 sessions, 1 KB); backup `backups/pg-pre-mongo.dump` (`pg_dump -Fc`); restore notes in `backups/README.md`. No production data → re-seed strategy, no row migration.
+- Step A (plan): `docs/DATABASE_DESIGN.md` rewritten (17 collections, embedding-vs-reference table, index/tx strategy, Appendix A record); D-014..D-018 in DECISIONS.md.
+- Step B (infra): compose `mongo:8.0 --replSet rs0` + one-shot `mongo-init` (`rs.initiate`, verified PRIMARY); `MONGODB_URI` in env/compose; legacy `db` service + `pgdata` removed after verification; backup retained.
+- Step C (persistence): global `MongoModule` replaces `PrismaModule` (D-016); 17 schemas in `common/mongo/schemas`; `withTransaction` helper (D-015); `mongo-errors` (E11000→409) + `object-id` (invalid→404, lowercase emails/slugs) utils; services + guards reimplemented on `Model<T>` with identical API contracts and Persian error strings; `env.ts` requires `MONGODB_URI`; Dockerfile drops generate/migrate steps.
+- Step D (data): seed rewritten (`scripts/seed-mongo.ts`, idempotent upserts: demo org + `admin@kms.local` + general KB).
+- Step E (removal): `@prisma/client` + `prisma` CLI gone from deps; `backend/prisma/*` + `common/prisma/*` deleted; `DATABASE_URL`/`POSTGRES_*` removed from code/env/compose; repo-wide grep clean except history docs (kept intentionally), code comments, and the compose restore note.
+- Verification (all executed 2026-11-04): `tsc` clean (api+web); backend `eslint` clean; `nest build` + `vite build` pass; unit **28/28** (incl. 3 live integration tests: unique email E11000, compound membership unique, `withTransaction` commit on rs0); live smoke **24/24 PASS** on Mongo (register/dup/login/me/wrong-pw/no-token/cross-org/invite/member-403/roster/rotation/reuse/family-dead/change-pw/old/new/last-admin/dept CRUD+cycle+nonempty/logout); `/api/health` + `/api/ready` (mongo ping) 200; `docker compose config` valid.
+- Debt: `autoIndex: false` in production + explicit index step deferred to Phase 9; text index is keyword-based (Persian has no stemmer) — swappable search façade unchanged; integration spec skips cleanly when MongoDB is unreachable.
 - [ ] Root: `docker-compose.yml`, `.env.example`, `.gitignore`, `README.md`, `package.json` (workspaces).
 - [ ] Backend scaffold + strict TS + lint + env + logging + filters + health + swagger + Prisma schema/seed.
 - [ ] Frontend scaffold + Tailwind + Router + Query + i18n + AppShell.

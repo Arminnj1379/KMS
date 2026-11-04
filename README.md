@@ -1,15 +1,16 @@
-# KMS — Enterprise Knowledge Management System
+# KMS — Enterprise Knowledge Management System (MongoDB)
 
-Persian-first (fa-IR, RTL) modular monolith: NestJS + Prisma + PostgreSQL + MinIO / React + Vite + Tailwind + Tiptap.
+Persian-first (fa-IR, RTL) modular monolith: NestJS + Mongoose + MongoDB + MinIO / React + Vite + Tailwind + Tiptap.
 
-> Phase 1 (foundation). See `docs/` for requirements, architecture, DB design, plan, decisions, progress.
+> Migrated from PostgreSQL/Prisma in 2026-11 (see `docs/DATABASE_DESIGN.md` Appendix A, `docs/DECISIONS.md` D-014..D-018).
 
 ## Quick start (local, without Docker)
 
 ```bash
 cp .env.example .env
+docker compose up -d mongo mongo-init   # replica set rs0 (transactions require it)
 npm install
-npx prisma migrate dev --schema=backend/prisma/schema.prisma
+npm run db:seed                         # demo org + admin
 npm run dev:api      # http://localhost:3000/api/health
 npm run dev:web      # http://localhost:5173 (proxies /api → localhost:3000)
 ```
@@ -28,9 +29,10 @@ docker compose up -d --build
 
 ```
 docs/        product + architecture + db + plan + decisions + progress
-backend/     NestJS modular monolith (src/modules/*, src/common/*, prisma/)
+backend/     NestJS modular monolith (src/modules/*, src/common/* incl. common/mongo)
 frontend/    React feature-based app (src/features/*, src/pages/*, src/shared/*)
-docker-compose.yml  db + minio + api + web
+backups/     pre-migration PostgreSQL dump (history only, gitignored)
+docker-compose.yml  mongo(+init rs0) + minio + api + web  (+ legacy `db` profile)
 ```
 
 ## Commands
@@ -40,10 +42,10 @@ docker-compose.yml  db + minio + api + web
 | Typecheck both | `npm run typecheck` |
 | Build both | `npm run build` |
 | Backend tests | `npm test --workspace=backend` |
-| Prisma validate | `npm run prisma:validate` |
+| Seed MongoDB | `npm run db:seed` |
 | API docs (dev) | `http://localhost:3000/api/docs` |
 
-## Default seed (Phase 2+)
+## Default seed
 
-`admin@kms.local / ChangeMe123!` — created by `backend/prisma/seed.ts` (demo org + KB).
+`admin@kms.local / ChangeMe123!` — created by `backend/scripts/seed-mongo.ts` (demo org + KB).
 Change immediately after first login.

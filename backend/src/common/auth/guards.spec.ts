@@ -2,11 +2,15 @@ import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import type { ExecutionContext } from '@nestjs/common';
+import { Model, Types } from 'mongoose';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { RolesGuard } from './roles.guard';
-import { PrismaService } from '../prisma/prisma.service';
+import type { Membership } from '../mongo/schemas/membership.schema';
+import type { User } from '../mongo/schemas/user.schema';
 
 const SECRET = 'guard-test-secret-at-least-32-chars!!';
+const U1 = '000000000000000000000001';
+const O1 = '000000000000000000000010';
 
 function ctxWith(req: Record<string, unknown>): ExecutionContext {
   return {
@@ -16,25 +20,32 @@ function ctxWith(req: Record<string, unknown>): ExecutionContext {
   } as unknown as ExecutionContext;
 }
 
+function q<T>(value: T) {
+  return { lean: jest.fn().mockResolvedValue(value) };
+}
+
 describe('JwtAuthGuard', () => {
   const jwt = new JwtService({ secret: SECRET });
 
-  function makeGuard(publicRoute: boolean, membership: unknown) {
+  function makeGuard(publicRoute: boolean, membership: unknown, user: unknown) {
     const reflector = new Reflector();
     jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(publicRoute);
-    const prisma = {
-      membership: { findUnique: jest.fn().mockResolvedValue(membership) },
-    } as unknown as PrismaService;
-    return new JwtAuthGuard(reflector, jwt, prisma);
+    const membershipModel = {
+      findOne: jest.fn().mockReturnValue(q(membership)),
+    } as unknown as Model<Membership>;
+    const userModel = {
+      findById: jest.fn().mockReturnValue(q(user)),
+    } as unknown as Model<User>;
+    return new JwtAuthGuard(reflector, jwt, membershipModel, userModel);
   }
 
   it('skips @Public routes without a token', async () => {
-    const guard = makeGuard(true, null);
+    const guard = makeGuard(true, null, null);
     await expect(guard.canActivate(ctxWith({ headers: {} }))).resolves.toBe(true);
   });
 
   it('rejects missing and malformed tokens', async () => {
-    const guard = makeGuard(false, null);
+    const guard = makeGuard(false, null, null);
     await expect(guard.canActivate(ctxWith({ headers: {} }))).rejects.toBeInstanceOf(
       UnauthorizedException,
     );
@@ -44,28 +55,37 @@ describe('JwtAuthGuard', () => {
   });
 
   it('attaches org identity for valid tokens with active membership', async () => {
-    // Single secret for signing and verification (env is shared per worker).
     process.env['JWT_ACCESS_SECRET'] = SECRET;
-    const guard = makeGuard(false, {
-      organizationId: 'o1',
-      role: 'member',
-      user: { id: 'u1', email: 'sara@example.com', isActive: true },
-    });
+    const guard = makeGuard(
+      false,
+      { organizationId: new Types.ObjectId(O1), role: 'member' },
+      { _id: new Types.ObjectId(U1), email: 'sara@example.com', isActive: true },
+    );
     const token = await jwt.signAsync(
-      { sub: 'u1', orgId: 'o1', orgRole: 'member', email: 'sara@example.com' },
+      { sub: U1, orgId: O1, orgRole: 'member', email: 'sara@example.com' },
       { secret: SECRET },
     );
     const req: Record<string, unknown> = { headers: { authorization: `Bearer ${token}` } };
     await expect(guard.canActivate(ctxWith(req))).resolves.toBe(true);
-    expect(req['user']).toMatchObject({ userId: 'u1', orgId: 'o1', orgRole: 'member' });
+    expect(req['user']).toMatchObject({ userId: U1, orgId: O1, orgRole: 'member' });
   });
 
-  it('rejects when membership was removed', async () => {
+  it('rejects when membership was removed or user deactivated', async () => {
     process.env['JWT_ACCESS_SECRET'] = SECRET;
-    const guard = makeGuard(false, null);
-    const token = await jwt.signAsync({ sub: 'u1', orgId: 'o1' }, { secret: SECRET });
+    const token = await jwt.signAsync({ sub: U1, orgId: O1 }, { secret: SECRET });
+
+    const noMembership = makeGuard(false, null, null);
     await expect(
-      guard.canActivate(ctxWith({ headers: { authorization: `Bearer ${token}` } })),
+      noMembership.canActivate(ctxWith({ headers: { authorization: `Bearer ${token}` } })),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+
+    const inactive = makeGuard(
+      false,
+      { organizationId: new Types.ObjectId(O1), role: 'member' },
+      { _id: new Types.ObjectId(U1), email: 'sara@example.com', isActive: false },
+    );
+    await expect(
+      inactive.canActivate(ctxWith({ headers: { authorization: `Bearer ${token}` } })),
     ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 });

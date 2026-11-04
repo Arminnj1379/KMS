@@ -79,10 +79,10 @@ Quality bar: Linear / Notion / Confluence level UX, not a demo.
 ## 4. Non-Functional Requirements
 
 - Security: bcrypt (cost 12), JWT access (15m) + refresh (7d, rotation, reuse detection), helmet, CORS allowlist, rate limiting (auth endpoints), Zod/class-validator input validation, sanitized HTML, presigned URLs (no public bucket), secrets via env.
-- Data integrity: FKs, unique constraints (`org slug`, `kb slug per org`, `article slug per kb`, `category slug per kb`), transactions for multi-write ops, Prisma migrations only.
+- Data integrity: unique constraints (`org slug`, `kb slug per org`, `article slug per kb`, `category slug per kb`), app-enforced referential rules, transactions for multi-write ops (replica set `rs0`), Mongoose schemas as the single source of truth.
 - Observability: centralized structured logging (pino), correlation/request IDs, health checks (`/health`, `/ready`), Swagger/OpenAPI.
 - UX: Persian RTL default, Vazirmatn font, light/dark themes, responsive (≥360px), accessible (focus states, aria, keyboard nav for dialogs/menus), loading/empty/error states everywhere, no dead buttons.
-- Performance: pagination everywhere, DB indexes on FK + search vectors, N+1 avoidance (Prisma `include` batching), frontend code-splitting + React Query caching.
+- Performance: pagination everywhere, DB indexes on refs + text index, N+1 avoidance (batched lean queries), frontend code-splitting + React Query caching.
 - Testing: critical-path tests (auth, authz, org isolation, article lifecycle, workflow transitions, version restore, search scoping).
 
 ## 5. Out of Scope (MVP)

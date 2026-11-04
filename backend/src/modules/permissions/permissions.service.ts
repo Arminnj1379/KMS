@@ -1,19 +1,23 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../../common/prisma/prisma.service';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import { Membership } from '../../common/mongo/schemas/membership.schema';
+import { toObjectIdOrNull } from '../../common/mongo/object-id';
 
 /**
  * Central authorization choke point for organization scope.
- * Other modules import this service (never another module's repository).
+ * Other modules import this service (never another module's model).
  */
 @Injectable()
 export class PermissionsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(@InjectModel(Membership.name) private readonly membershipModel: Model<Membership>) {}
 
-  /** Membership row or null — callers map null to 404 to avoid org-existence leaks. */
+  /** Membership doc or null — callers map null to 404 to avoid org-existence leaks. */
   async membership(userId: string, orgId: string) {
-    return this.prisma.membership.findUnique({
-      where: { organizationId_userId: { organizationId: orgId, userId } },
-    });
+    const userObjectId = toObjectIdOrNull(userId);
+    const orgObjectId = toObjectIdOrNull(orgId);
+    if (!userObjectId || !orgObjectId) return null;
+    return this.membershipModel.findOne({ organizationId: orgObjectId, userId: userObjectId }).lean();
   }
 
   async requireMember(userId: string, orgId: string): Promise<void> {

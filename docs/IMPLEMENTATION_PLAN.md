@@ -31,7 +31,7 @@
 - review_requests + state machine + history, notifications hook, frontend review inbox + approve/reject dialogs, tests (illegal transition 422, reviewer-only approve).
 
 ## Phase 7 — Search
-- PrismaSearchService (FTS+trigram), SearchController with permission scoping, frontend search page + filters, tests (org isolation in results, relevance ordering smoke).
+- MongoSearchService (text index + regex fallback), SearchController with permission scoping, frontend search page + filters, tests (org isolation in results, relevance ordering smoke).
 
 ## Phase 8 — Notifications & Audit
 - notifications CRUD + emitter, audit-log writer + admin query UI, bell + activity pages, async-ready interface (no broker yet).

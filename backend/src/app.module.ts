@@ -5,7 +5,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 import { JwtAuthGuard } from './common/auth/jwt-auth.guard';
 import { RolesGuard } from './common/auth/roles.guard';
-import { PrismaModule } from './common/prisma/prisma.module';
+import { MongoModule } from './common/mongo/mongo.module';
 import { HealthModule } from './modules/health/health.module';
 import { IdentityModule } from './modules/identity/identity.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
@@ -16,6 +16,7 @@ import { UsersModule } from './modules/users/users.module';
  * Root wiring only. Module dependency direction:
  * users/organizations → permissions; identity stands alone (bootstrap).
  * common/ never imports from modules/.
+ * Persistence: global MongoModule (Mongoose) replaces PrismaModule.
  */
 @Module({
   imports: [
@@ -32,7 +33,7 @@ import { UsersModule } from './modules/users/users.module';
     }),
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 200 }]),
     JwtModule.register({ global: true }),
-    PrismaModule,
+    MongoModule,
     PermissionsModule,
     IdentityModule,
     UsersModule,

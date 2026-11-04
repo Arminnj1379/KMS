@@ -1,20 +1,37 @@
 services:
-  db:
-    image: postgres:16-alpine
+  mongo:
+    image: mongo:8.0
     restart: unless-stopped
+    command: ["--replSet", "rs0", "--bind_ip_all"]
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-kms}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kms_secret}
-      POSTGRES_DB: ${POSTGRES_DB:-kms}
+      MONGO_INITDB_DATABASE: ${MONGO_DB:-kms}
     ports:
-      - "5432:5432"
+      - "27017:27017"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - mongodata:/data/db
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-kms}"]
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
       interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 20
+      start_period: 15s
+
+  mongo-init:
+    image: mongo:8.0
+    depends_on:
+      mongo:
+        condition: service_started
+    entrypoint: >
+      /bin/sh -c "
+      sleep 10;
+      mongosh --host mongo:27017 --quiet --eval 'try { rs.initiate({ _id: \"rs0\", members: [{ _id: 0, host: \"mongo:27017\" }] }) } catch (e) { printjson(e) }';
+      mongosh --host mongo:27017 --quiet --eval 'db.adminCommand(\"ping\")';
+      "
+    restart: "no"
+
+  # Legacy PostgreSQL removed post-migration. Pre-migration backup kept at
+  # backups/pg-pre-mongo.dump (gitignored). Restore: pg_restore -U kms -d kms
+  # backups/pg-pre-mongo.dump against a postgres:16 instance.
 
   minio:
     image: minio/minio:RELEASE.2024-08-17T01-24-54Z
@@ -56,13 +73,13 @@ services:
       context: ./backend
     restart: unless-stopped
     depends_on:
-      db:
+      mongo:
         condition: service_healthy
       minio:
         condition: service_started
     environment:
       NODE_ENV: ${NODE_ENV:-production}
-      DATABASE_URL: postgresql://${POSTGRES_USER:-kms}:${POSTGRES_PASSWORD:-kms_secret}@db:5432/${POSTGRES_DB:-kms}?schema=public
+      MONGODB_URI: mongodb://mongo:27017/${MONGO_DB:-kms}?replicaSet=rs0&directConnection=true
       API_PORT: "3000"
       API_PREFIX: ${API_PREFIX:-api}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
@@ -88,5 +105,5 @@ services:
       - "5173:80"
 
 volumes:
-  pgdata:
+  mongodata:
   minio-data:
