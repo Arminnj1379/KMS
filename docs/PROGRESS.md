@@ -166,6 +166,12 @@
 - Known issues: psql CLI absent on host (use containerized pg); network-dependent `npm install` pending.
 - Next: scaffold backend `package.json`/`src`, frontend `package.json`/`src`, then install+build.
 
+## Backend performance cleanup — completed 2026-11-05 ✅ (no logic changes)
+- Indexes added: `articles {knowledgeBaseId, deletedAt, status}` (list filter), `notifications {userId, createdAt}` (all-listing sort), `audit_logs {organizationId, action, createdAt}` (activity filter). `ensure-indexes` re-run cleanly on dev Mongo (17 collections).
+- N+1 eliminated: KB `listMembers` now batch-fetches users in one `$in` query; admin `users.toRows` batch-fetches users + departments; KB `list` replaced 2N `countDocuments` calls with two grouped aggregates.
+- Verified: `nest build`, unit 103/103, e2e 10/10 all green after changes.
+- Debt: session `expiresAt` TTL auto-cleanup deferred (index-options conflict on existing DBs; plain index retained). Audit-log actor-filter index not added (admin-only, rare). kbDto count batching only applied to `list`.
+
 ## Gate checklist template (per phase)
 - [ ] Files reviewed · arch consistent · SoC · naming · no dup · no needless abstraction
 - [ ] Errors/validation/authz/DB integrity checked
