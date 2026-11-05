@@ -35,9 +35,17 @@ interface Conflict {
 
 function extractConflict(error: unknown): Article | null {
   if (axios.isAxiosError(error) && error.response?.status === 409) {
-    const msg = (error.response.data as { message?: unknown }).message;
-    if (typeof msg === 'object' && msg !== null && 'current' in msg) {
-      return (msg as { current: Article }).current ?? null;
+    const data = error.response.data as { current?: unknown; message?: unknown };
+    // Current envelope (Phase 11): top-level `current`. Legacy shape kept
+    // for tolerance: `{ message: { current } }`.
+    if (data && typeof data === 'object') {
+      if (data.current && typeof data.current === 'object') {
+        return data.current as Article;
+      }
+      const msg = data.message;
+      if (typeof msg === 'object' && msg !== null && 'current' in msg) {
+        return (msg as { current: Article }).current ?? null;
+      }
     }
   }
   return null;

@@ -15,7 +15,8 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "db:seed": "ts-node scripts/seed-mongo.ts",
-    "db:indexes": "ts-node scripts/ensure-indexes.ts"
+    "db:indexes": "ts-node scripts/ensure-indexes.ts",
+    "test:e2e": "jest --config test/jest-e2e.json"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.654.0",

@@ -62,7 +62,7 @@ backend/
 
 ## 3. Request Lifecycle
 
-`helmet → cors → rate-limit → request-id → logging → jwt-auth (unless @Public) → roles → resource-guard → validation_pipe (whitelist, forbidNonWhitelisted) → controller → service (withTransaction where multi-doc) → mongoose model (.lean()) → audit-log (fire-and-forget via AuditService, never blocking main tx failure) → exception-filter (envelope {statusCode,message,code,requestId})`.
+`helmet → cors → rate-limit → request-id → logging → jwt-auth (unless @Public) → roles → resource-guard → validation_pipe (whitelist, forbidNonWhitelisted) → controller → service (withTransaction where multi-doc) → mongoose model (.lean()) → audit-log (fire-and-forget via AuditService, never blocking main tx failure) → exception-filter (envelope {statusCode,message,code,requestId}, plus top-level `current` on 409 so the editor conflict dialog can reload/overwrite — Phase 11)`.
 
 Error codes: `UNAUTHORIZED, FORBIDDEN, NOT_FOUND, CONFLICT, UNPROCESSABLE, RATE_LIMITED, INTERNAL`. Never leak stack/driver errors in production.
 

@@ -18,6 +18,7 @@ minio-data/
 # Local storage driver uploads (dev/smoke only; never commit user bytes)
 uploads/
 uploads-smoke/
+uploads-e2e/
 
 # Pre-migration database backups (large, history only)
 backups/

@@ -2,7 +2,14 @@
 
 > Updated after every phase (see task §10). Legend: ✅ done · 🟡 partial · ⬜ not started · 🛑 blocked.
 
-## Current: all phases 0–10 ✅ complete (+ UI modernization) — system prod-ready per DEPLOYMENT.md
+## Current: all phases 0–11 ✅ complete (+ UI modernization) — system prod-ready per DEPLOYMENT.md
+
+## Phase 11 — HTTP end-to-end journeys (supertest, real Mongo) — completed 2026-11-05 ✅
+- New `backend/test/app.e2e-spec.ts` + `test/jest-e2e.json` + `test:e2e` script: boots the real Nest app (same ValidationPipe + HttpExceptionFilter as `main.ts`) against a real rs0 Mongo (`kms_e2e`, dropped before/after), drives 10 ordered journeys over HTTP with supertest, no mocks below the HTTP line: health/ready → register-as-org-admin → KB + invite + reviewer membership → draft/autosave-no-snapshot/changelog-snapshot → 409-with-current → submit/approve→published + history + both-party notifications + read/unread → audit log + member-403 → exact + affixed Persian search → second-org isolation → logout + refresh-reuse-401.
+- Real bug found by the suite (D-027): the exception filter dropped the 409 `current` payload, so the editor force-save degraded to a generic error; fixed in `http-exception.filter.ts` (409 passthrough) + `ArticleEditorPage.tsx` + `api-client.ts` (`ApiErrorEnvelope.current`, legacy `{message:{current}}` tolerated). The e2e asserts `body.current.version`; Playwright stays blocked (browser CDN download denied in this sandbox).
+- Verification (all green, executed 2026-11-05): unit **103/103**, `tsc` (api+web) + `eslint` clean, `nest build` + `vite build` pass, e2e **10/10**.
+
+## Phase 10 — Persian search recall (query-side, no migration) — completed 2026-11-05 ✅
 
 ## Phase 10 — Persian search recall (query-side, no migration) — completed 2026-11-05 ✅
 - `searchVariants` + `stemPersianToken` in `ArticlesService`: raw query first, then Arabic-char unification (ي/ك/ة, tatweel, diacritics), ZWNJ-joined/spaced forms, and a conservative stemmer (relative-ی after vowels incl. the ZWNJ rule, ZWNJ plurals, longest-match with single-char suffixes firing once so `راهنما` never degrades to `راهن`, length floor 3 so `علی` survives). Capped at 5 deduped variants → ≤15 escaped regex clauses.
@@ -24,6 +31,7 @@
 | 8 Notifications & Audit | ✅ | — |
 | 9 Polish & Prod-readiness | ✅ | Indexes EXPLAIN-reviewed (one gap fixed) + upload throttles + nginx hardening + DEPLOYMENT.md + polished seed + full suite green. See entry below. |
 | 10 Persian search recall | ✅ | Query-side `searchVariants` widen the regex fallback (relative-ی, ZWNJ plurals); `$text` untouched. See entry below. |
+| 11 HTTP E2E (supertest) | ✅ | 10 ordered journeys over real HTTP + real Mongo (`kms_e2e`, dropped after run); found + fixed the 409-`current` transport bug. See entry below. |
 | UI modernization (frontend-only redesign) | ✅ | See entry below — no API/backend changes. |
 
 ## Phase 9 — completed 2026-11-05 ✅

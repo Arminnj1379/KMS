@@ -38,6 +38,8 @@ export interface ApiErrorEnvelope {
   message: string;
   code: string;
   requestId?: string;
+  /** Optimistic-concurrency 409s carry the current document here (Phase 11). */
+  current?: unknown;
 }
 
 export function toApiMessage(error: unknown, fallback: string): string {

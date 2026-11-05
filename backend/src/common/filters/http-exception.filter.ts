@@ -6,6 +6,13 @@ interface ErrorEnvelope {
   message: string;
   code: string;
   requestId?: string;
+  /**
+   * Phase 11: the optimistic-concurrency 409 carries the current document
+   * so the editor can offer reload/overwrite. The filter preserves it —
+   * without this the transport silently drops `current` and the conflict
+   * dialog degrades to a generic error.
+   */
+  current?: unknown;
 }
 
 /**
@@ -23,6 +30,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let message = 'خطای داخلی سرور';
     let code = 'INTERNAL';
+    let current: unknown;
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
@@ -30,10 +38,11 @@ export class HttpExceptionFilter implements ExceptionFilter {
       if (typeof body === 'string') {
         message = body;
       } else if (typeof body === 'object' && body !== null) {
-        const b = body as { message?: unknown; code?: unknown };
+        const b = body as { message?: unknown; code?: unknown; current?: unknown };
         if (Array.isArray(b.message)) message = b.message.join('؛ ');
         else if (typeof b.message === 'string') message = b.message;
         if (typeof b.code === 'string') code = b.code;
+        if (status === HttpStatus.CONFLICT && 'current' in b) current = b.current;
       }
       if (!code || code === 'INTERNAL') {
         code =
@@ -64,6 +73,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       message,
       code,
       requestId: request.id,
+      ...(current !== undefined ? { current } : {}),
     };
     response.status(status).json(envelope);
   }
