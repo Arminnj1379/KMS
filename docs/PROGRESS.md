@@ -2,7 +2,7 @@
 
 > Updated after every phase (see task §10). Legend: ✅ done · 🟡 partial · ⬜ not started · 🛑 blocked.
 
-## Current: Phase 8 ✅ complete — next: Phase 9 Polish & Prod-readiness
+## Current: all phases 0–9 ✅ complete (+ UI modernization) — system prod-ready per DEPLOYMENT.md
 
 | Phase | Status | Notes |
 |---|---|---|
@@ -16,8 +16,17 @@
 | 6 Approval Workflow | ✅ | Backend: review state machine (submit/approve/reject/cancel) + history + notifications seam. Frontend: review inbox + article submit/banner/history. |
 | 7 Search | ✅ | Backend: `GET /search` ($text + regex fallback, KB/org-scoped) + globalSearch façade. Frontend: search page + filters + pagination. |
 | 8 Notifications & Audit | ✅ | — |
-| 9 Polish & Prod-readiness | 🟡 | Backend gates green through Phase 8; DEPLOYMENT.md + index review remain. |
+| 9 Polish & Prod-readiness | ✅ | Indexes EXPLAIN-reviewed (one gap fixed) + upload throttles + nginx hardening + DEPLOYMENT.md + polished seed + full suite green. See entry below. |
 | UI modernization (frontend-only redesign) | ✅ | See entry below — no API/backend changes. |
+
+## Phase 9 — completed 2026-11-05 ✅
+- Indexes: EXPLAIN review of all hot shapes (`backend/scripts/explain-phase9.js`) — inbox/audit/search/member/text queries all IXSCAN/TEXT_MATCH; one real gap found and fixed (`kb_members.userId` COLLSCAN over 30 docs → new `{userId:1}` index → IXSCAN, 2 keys). Article-list SORT (in-memory over filtered page) accepted to ~10k articles/KB. New `db:indexes` script (`ensure-indexes.ts`, 17 collections) for the `autoIndex:false` prod path.
+- Rate limits: global 200/min/IP; register/login 10/min, refresh 30/min (unchanged); `upload-intent`/`PUT upload/:key`/`confirm` now 30/min (disk/CPU surface). Verified live (`x-ratelimit-limit: 30` on intent). Search `q` capped at 200 chars + escaped (no ReDoS). In-memory throttle noted as single-replica constraint (DEPLOYMENT.md).
+- Security headers: helmet live on all API responses (verified: CSP/HSTS/SAMEORIGIN/nosniff); CORS allowlist; `/docs` prod-gated; nginx shell hardened (nosniff/SAMEORIGIN/referrer/permissions-policy + gzip + immutable `/assets`, deliberately no CSP to stay `VITE_API_URL`-agnostic).
+- Seed polish: `sara@kms.local` reviewer + categories (`guides`/`procedures`) + tags + 3 Persian demo articles (2 published + 1 draft, each with an initial snapshot); idempotent re-run verified; `isSuperAdmin` confirmed dead schema (left untouched).
+- Responsive/a11y pass: members table wrapped for mobile scroll (matches admin); dialogs bottom-sheet on mobile + Esc/backdrop; skeletons/empty/error states already in place from the redesign; `focus-visible` rings + reduced-motion respected.
+- Verification (all green, executed 2026-11-05): backend `tsc` + `eslint` clean, unit **97/97**, `nest build` + `vite build` pass, live smoke **36/36** vs local Mongo, seed re-run + demo content asserted in DB, `db:indexes` run (17 collections), throttle/header spot-checks live.
+- Debt: throttles in-memory (Redis before horizontal scale); notification type labels stay hardcoded fa; MinIO path still unverified live in this sandbox.
 
 ## Phase 0 — completed work
 - Inspected `E:\Najafi\KMS` (empty, not a git repo, no AGENTS.md/README).

@@ -14,6 +14,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import { CurrentUser } from '../../common/auth/current-user.decorator';
 import type { AuthenticatedUser } from '../../common/auth/types';
@@ -47,6 +48,7 @@ export class DocumentsController {
   constructor(private readonly documents: DocumentsService) {}
 
   @Post('upload-intent')
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @ApiOperation({ summary: 'Step 1: validate + mint upload target (any org member)' })
   intent(@CurrentUser() me: AuthenticatedUser, @Body() dto: UploadIntentDto) {
     return this.documents.uploadIntent(me.orgId, me.userId, dto);
@@ -54,6 +56,7 @@ export class DocumentsController {
 
   @Put('upload/:key')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @ApiOperation({ summary: 'Local-driver byte sink (S3 clients PUT to the presigned URL instead)' })
   async uploadLocal(
     @CurrentUser() me: AuthenticatedUser,
@@ -66,6 +69,7 @@ export class DocumentsController {
   }
 
   @Post('confirm')
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @ApiOperation({ summary: 'Step 2: verify bytes + create the document row (optionally attach)' })
   confirm(@CurrentUser() me: AuthenticatedUser, @Body() dto: ConfirmDocumentDto) {
     return this.documents.confirm(me.orgId, me.userId, me.orgRole, dto);

@@ -240,7 +240,8 @@ export function KbDetailPage(): JSX.Element {
           </div>
         )}
         {members.data && members.data.length > 0 && (
-          <table className="tbl">
+          <div className="overflow-x-auto">
+            <table className="tbl min-w-[560px]">
             <thead>
               <tr>
                 <th>{t('auth.fullName')}</th>
@@ -286,7 +287,8 @@ export function KbDetailPage(): JSX.Element {
                 </tr>
               ))}
             </tbody>
-          </table>
+            </table>
+          </div>
         )}
         {canManage && (
           <form onSubmit={(e) => void onInvite(e)} className="flex flex-wrap gap-2 border-t p-4" style={{ borderColor: 'var(--line)' }}>

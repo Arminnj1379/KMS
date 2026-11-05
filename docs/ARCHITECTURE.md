@@ -129,7 +129,7 @@ Client: `POST /documents/upload-intent {filename,mime,size,articleId?}` → serv
 - Logging: pino (`nestjs-pino`), JSON in prod, pretty in dev; `x-request-id` propagated; no PII/passwords in logs.
 - Health: `/health` (liveness, no deps), `/ready` (mongo + storage ping).
 - Swagger: `/docs` (dev/staging only, bearer auth).
-- Schema/index rollout: Mongoose schemas are code; indexes build on startup (`autoIndex: true` in dev/test, `false` in prod with an explicit index step — Phase 9).
+- Schema/index rollout: Mongoose schemas are code; indexes build on startup in dev/test (`autoIndex: true`), while production runs `npm run db:indexes` after every deploy (`backend/scripts/ensure-indexes.ts`, idempotent, all 17 collections). The Phase 9 EXPLAIN review (`backend/scripts/explain-phase9.js`) confirmed IXSCAN on inbox/audit/search/member hot paths; the only SORT stage (article-list ordering over an already-filtered page) is accepted until a KB exceeds ~10k articles.
 
 ## 11. Risks & Mitigations
 

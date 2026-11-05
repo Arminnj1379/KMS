@@ -23,3 +23,5 @@ export class KbMember {
 
 export const KbMemberSchema = SchemaFactory.createForClass(KbMember);
 KbMemberSchema.index({ knowledgeBaseId: 1, userId: 1 }, { unique: true });
+// Phase 9: cross-KB scoping (`accessibleKbIds`) queries by userId alone.
+KbMemberSchema.index({ userId: 1 });
