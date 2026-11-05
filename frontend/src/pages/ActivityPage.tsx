@@ -1,81 +1,43 @@
 import { useState } from 'react';
-import { Activity, History } from 'lucide-react';
+import { History, ShieldCheck } from 'lucide-react';
 import { t } from '../i18n';
 import { toApiMessage } from '../shared/lib/api-client';
+import { formatFaDate, formatFaNumber } from '../shared/lib/format-fa';
 import { PageHeader } from '../shared/ui/Chrome';
-import { Button } from '../shared/ui/Button';
 import { Select } from '../shared/ui/Field';
 import { Badge } from '../shared/ui/Badge';
 import { EmptyState, InlineError, Skeleton } from '../shared/ui/Feedback';
+import { Pager } from '../shared/ui/Pager';
 import { useMe } from '../features/auth/hooks';
 import { useAuditLogs } from '../features/audit/hooks';
-import { formatFaDate, formatFaNumber } from '../shared/lib/format-fa';
+import { AUDIT_ACTION_CODES, auditActionLabelKey, auditActionTone } from '../features/audit/labels';
 
-const actionLabels: Record<string, string> = {
-  'auth.register': 'ثبت‌نام',
-  'auth.login': 'ورود',
-  'auth.logout': 'خروج',
-  'auth.change-password': 'تغییر گذرواژه',
-  'kb.create': 'ساخت پایگاه دانش',
-  'kb.update': 'ویرایش پایگاه دانش',
-  'kb.delete': 'حذف پایگاه دانش',
-  'kb.member.add': 'افزودن عضو',
-  'kb.member.update': 'تغییر نقش عضو',
-  'kb.member.remove': 'حذف عضو',
-  'article.create': 'ساخت مقاله',
-  'article.update': 'ویرایش مقاله',
-  'article.delete': 'حذف مقاله',
-  'article.attach': 'پیوست فایل',
-  'article.detach': 'جدا کردن پیوست',
-  'article.draft': 'بازگشت به پیش‌نویس',
-  'article.published': 'انتشار',
-  'article.archived': 'بایگانی',
-  'review.submitted': 'ارسال برای بررسی',
-  'review.approved': 'تأیید بررسی',
-  'review.rejected': 'رد بررسی',
-  'review.cancelled': 'لغو بررسی',
-};
-
-const actionTone: Record<string, 'blue' | 'green' | 'amber' | 'rose' | 'slate'> = {
-  'auth.register': 'green',
-  'auth.login': 'slate',
-  'auth.logout': 'slate',
-  'auth.change-password': 'amber',
-  'kb.create': 'blue',
-  'kb.delete': 'rose',
-  'article.create': 'blue',
-  'article.delete': 'rose',
-  'article.published': 'green',
-  'article.archived': 'amber',
-  'review.submitted': 'blue',
-  'review.approved': 'green',
-  'review.rejected': 'rose',
-};
+const PAGE_SIZE = 20;
 
 export function ActivityPage(): JSX.Element {
   const me = useMe();
   const isAdmin = me.data?.memberships.some((m) => m.role === 'org-admin') ?? false;
   const [action, setAction] = useState<string>('');
   const [page, setPage] = useState<number>(1);
-  const list = useAuditLogs({ ...(action ? { action } : {}), page, pageSize: 20 }, isAdmin);
+  const list = useAuditLogs({ ...(action ? { action } : {}), page, pageSize: PAGE_SIZE }, isAdmin);
 
   const total = list.data?.total ?? 0;
-  const pageSize = list.data?.pageSize ?? 20;
-  const maxPage = Math.max(1, Math.ceil(total / pageSize));
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   if (!me.isPending && !isAdmin) {
     return (
-      <section className="mx-auto max-w-4xl">
+      <div className="space-y-6">
         <PageHeader title={t('activity.title')} />
-        <div className="surface mt-4 p-5 text-sm text-amber-800 dark:text-amber-200">
+        <div className="surface flex items-center gap-3 p-5 text-[14px] text-ink-2">
+          <ShieldCheck size={18} className="shrink-0 text-warn" aria-hidden />
           {t('admin.forbidden')}
         </div>
-      </section>
+      </div>
     );
   }
 
   return (
-    <section className="mx-auto max-w-4xl space-y-5">
+    <div className="space-y-6">
       <PageHeader
         title={t('activity.title')}
         description={t('activity.desc', { count: formatFaNumber(total) })}
@@ -86,68 +48,78 @@ export function ActivityPage(): JSX.Element {
               setAction(e.target.value);
               setPage(1);
             }}
-            className="w-auto"
+            className="sm:w-64"
             aria-label={t('activity.allActions')}
           >
             <option value="">{t('activity.allActions')}</option>
-            {Object.entries(actionLabels).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
+            {AUDIT_ACTION_CODES.map((code) => {
+              const key = auditActionLabelKey(code);
+              return (
+                <option key={code} value={code}>
+                  {key ? t(key) : code}
+                </option>
+              );
+            })}
           </Select>
         }
       />
 
       {list.isPending && (
-        <div className="space-y-2.5">
-          <Skeleton className="h-16" />
-          <Skeleton className="h-16" />
-          <Skeleton className="h-16" />
+        <div className="surface space-y-3 p-5">
+          <Skeleton className="h-10" />
+          <Skeleton className="h-10" />
+          <Skeleton className="h-10" />
         </div>
       )}
       {list.isError && <InlineError message={toApiMessage(list.error, t('common.error'))} onRetry={() => void list.refetch()} />}
+
       {list.data && list.data.items.length === 0 && (
-        <div className="surface">
+        <section className="surface">
           <EmptyState icon={History} title={t('activity.emptyTitle')} hint={t('activity.emptyHint')} />
-        </div>
-      )}
-      {list.data && list.data.items.length > 0 && (
-        <ol className="surface divide-y overflow-hidden" style={{ borderColor: 'var(--line)' }}>
-          {list.data.items.map((a) => (
-            <li key={a.id} className="flex items-start gap-3 px-5 py-3.5">
-              <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                <Activity size={15} />
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge tone={actionTone[a.action] ?? 'slate'}>{actionLabels[a.action] ?? a.action}</Badge>
-                  <span className="meta" dir="ltr">{a.resourceType} · {a.resourceId.slice(0, 8)}…</span>
-                </div>
-                <p className="meta mt-1">
-                  {formatFaDate(a.createdAt)}
-                  {a.actorId ? ` · ${t('activity.actor')}: ${a.actorId.slice(0, 8)}…` : ''}
-                  {a.ip ? ` · ${a.ip}` : ''}
-                </p>
-              </div>
-            </li>
-          ))}
-        </ol>
+        </section>
       )}
 
-      {maxPage > 1 && (
-        <div className="flex items-center justify-center gap-2">
-          <Button variant="secondary" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
-            {t('search.prev')}
-          </Button>
-          <span className="meta tabular-nums">
-            {formatFaNumber(page)} / {formatFaNumber(maxPage)}
-          </span>
-          <Button variant="secondary" size="sm" disabled={page >= maxPage} onClick={() => setPage((p) => Math.min(maxPage, p + 1))}>
-            {t('search.next')}
-          </Button>
-        </div>
+      {list.data && list.data.items.length > 0 && (
+        <section className="surface overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="tbl min-w-[760px]">
+              <thead>
+                <tr>
+                  <th>{t('activity.colAction')}</th>
+                  <th>{t('activity.resource')}</th>
+                  <th>{t('activity.actor')}</th>
+                  <th>{t('activity.ip')}</th>
+                  <th>{t('activity.colTime')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {list.data.items.map((row) => {
+                  const key = auditActionLabelKey(row.action);
+                  return (
+                    <tr key={row.id}>
+                      <td>
+                        <Badge tone={auditActionTone(row.action)}>{key ? t(key) : row.action}</Badge>
+                      </td>
+                      <td dir="ltr" className="text-start font-mono text-[12.5px] text-ink-3">
+                        {row.resourceType} · {row.resourceId.slice(0, 8)}
+                      </td>
+                      <td dir="ltr" className="text-start font-mono text-[12.5px] text-ink-3">
+                        {row.actorId ? row.actorId.slice(0, 8) : '—'}
+                      </td>
+                      <td dir="ltr" className="text-start font-mono text-[12.5px] text-ink-3">
+                        {row.ip ?? '—'}
+                      </td>
+                      <td className="whitespace-nowrap text-ink-3">{formatFaDate(row.createdAt)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
       )}
-    </section>
+
+      <Pager page={page} totalPages={totalPages} onPage={setPage} />
+    </div>
   );
 }

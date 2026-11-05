@@ -2,54 +2,119 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Design tokens. Stored as RGB triplets so Tailwind opacity modifiers work
+ * (`bg-accent/10`). Light and dark share one vocabulary; components never
+ * reference raw palette colours.
+ */
 :root {
-  --surface: #ffffff;
-  --surface-2: #f8f8f6;
-  --ink: #181b20;
-  --ink-2: #3f4750;
-  --ink-3: #6b7480;
-  --line: #e5e5e1;
-  --line-strong: #d6d6d1;
-  --brand-ink: #2449c4;
+  --canvas: 246 247 245;
+  --surface: 255 255 255;
+  --surface-muted: 249 250 249;
+  --surface-sunken: 239 242 240;
+  --ink: 19 27 26;
+  --ink-2: 62 73 71;
+  --ink-3: 101 113 110;
+  --ink-4: 150 160 157;
+  --line: 227 232 229;
+  --line-strong: 206 213 210;
+  --accent: 14 107 102;
+  --accent-hover: 11 90 86;
+  --accent-soft: 223 241 238;
+  --on-accent: 255 255 255;
+  --warn: 150 88 8;
+  --warn-soft: 251 241 220;
+  --danger: 176 37 27;
+  --danger-soft: 252 235 233;
+  --on-danger: 255 255 255;
+  --success: 21 111 72;
+  --success-soft: 224 245 235;
+  --overlay: 15 22 21;
+  --code-bg: 23 33 32;
+  --code-ink: 226 236 233;
+  --tile-0-bg: 223 241 238;
+  --tile-0-fg: 14 107 102;
+  --tile-1-bg: 231 235 251;
+  --tile-1-fg: 56 77 170;
+  --tile-2-bg: 251 239 218;
+  --tile-2-fg: 150 88 8;
+  --tile-3-bg: 250 232 236;
+  --tile-3-fg: 163 41 66;
+  --tile-4-bg: 240 234 250;
+  --tile-4-fg: 105 62 176;
+  --tile-5-bg: 230 240 232;
+  --tile-5-fg: 63 107 74;
+  color-scheme: light;
 }
 
 .dark {
-  --surface: #151b23;
-  --surface-2: #0e1116;
-  --ink: #e8ebef;
-  --ink-2: #b7bfc9;
-  --ink-3: #8b94a1;
-  --line: #232b36;
-  --line-strong: #2f3844;
-  --brand-ink: #8fadf8;
+  --canvas: 9 13 12;
+  --surface: 17 23 22;
+  --surface-muted: 21 29 28;
+  --surface-sunken: 27 37 35;
+  --ink: 231 237 235;
+  --ink-2: 185 196 193;
+  --ink-3: 132 146 143;
+  --ink-4: 86 99 96;
+  --line: 35 46 44;
+  --line-strong: 52 65 62;
+  --accent: 96 196 184;
+  --accent-hover: 124 209 198;
+  --accent-soft: 21 50 48;
+  --on-accent: 6 30 28;
+  --warn: 240 183 90;
+  --warn-soft: 56 40 14;
+  --danger: 245 130 120;
+  --danger-soft: 62 24 22;
+  --on-danger: 40 8 6;
+  --success: 110 207 157;
+  --success-soft: 18 46 33;
+  --overlay: 0 0 0;
+  --code-bg: 8 12 11;
+  --code-ink: 214 226 223;
+  --tile-0-bg: 21 50 48;
+  --tile-0-fg: 126 216 205;
+  --tile-1-bg: 28 34 62;
+  --tile-1-fg: 152 168 240;
+  --tile-2-bg: 58 42 16;
+  --tile-2-fg: 240 190 110;
+  --tile-3-bg: 64 26 34;
+  --tile-3-fg: 244 150 170;
+  --tile-4-bg: 42 32 66;
+  --tile-4-fg: 196 165 245;
+  --tile-5-bg: 25 46 33;
+  --tile-5-fg: 150 214 165;
+  color-scheme: dark;
 }
 
 @layer base {
   html {
-    font-family: Vazirmatn, Tahoma, system-ui, sans-serif;
+    font-family: 'Vazirmatn Variable', Vazirmatn, Tahoma, system-ui, sans-serif;
   }
   body {
-    @apply bg-paper text-slate-900 antialiased dark:bg-paper-dark dark:text-slate-100;
+    @apply bg-canvas text-ink antialiased;
+    font-size: 14px;
+    line-height: 1.75;
     text-rendering: optimizeLegibility;
   }
   ::selection {
-    background: rgb(46 91 238 / 0.22);
+    background: rgb(var(--accent) / 0.22);
   }
   :focus-visible {
-    outline: 2px solid rgb(46 91 238 / 0.65);
+    outline: 2px solid rgb(var(--accent));
     outline-offset: 2px;
-    border-radius: 4px;
+    border-radius: 6px;
   }
   * {
     scrollbar-width: thin;
-    scrollbar-color: rgb(120 130 140 / 0.45) transparent;
+    scrollbar-color: rgb(var(--ink-4) / 0.5) transparent;
   }
   *::-webkit-scrollbar {
     width: 8px;
     height: 8px;
   }
   *::-webkit-scrollbar-thumb {
-    background: rgb(120 130 140 / 0.45);
+    background: rgb(var(--ink-4) / 0.5);
     border-radius: 8px;
   }
 }
@@ -57,154 +122,211 @@
 @layer components {
   /* ---------- surfaces ---------- */
   .surface {
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: 0.625rem;
-    color: var(--ink);
+    @apply rounded-card border border-line bg-surface text-ink;
   }
-  .surface-flat {
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: 0.625rem;
+  .panel-head {
+    @apply flex min-h-12 items-center gap-2 border-b border-line px-5 py-3;
   }
   .hairline-b {
-    border-bottom: 1px solid var(--line);
+    @apply border-b border-line;
   }
 
   /* ---------- buttons ---------- */
   .btn {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-control px-3.5 py-2 text-sm font-semibold transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-55;
-    line-height: 1.5;
+    @apply inline-flex h-9 select-none items-center justify-center gap-2 whitespace-nowrap rounded-control px-3.5 text-[13.5px] font-semibold transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-primary {
-    @apply btn bg-brand-600 text-white hover:bg-brand-700 active:bg-brand-800;
+    @apply btn bg-accent text-accent-fg hover:bg-accent-hover;
   }
   .btn-secondary {
-    @apply btn border text-slate-700 hover:bg-slate-100 active:bg-slate-200 dark:text-slate-200;
-    border-color: var(--line-strong);
+    @apply btn border border-line-strong bg-surface text-ink hover:bg-surface-muted;
   }
   .btn-ghost {
-    @apply btn text-slate-600 hover:bg-slate-200/60 active:bg-slate-200 dark:text-slate-300 dark:hover:bg-slate-800;
+    @apply btn text-ink-2 hover:bg-surface-sunken hover:text-ink;
   }
   .btn-danger {
-    @apply btn border border-rose-300 text-rose-600 hover:bg-rose-50 active:bg-rose-100 dark:border-rose-900 dark:text-rose-300 dark:hover:bg-rose-950;
+    @apply btn border border-danger/25 bg-surface text-danger hover:bg-danger-soft;
   }
   .btn-danger-solid {
-    @apply btn bg-rose-600 text-white hover:bg-rose-700 active:bg-rose-800;
+    @apply btn bg-danger text-on-danger hover:opacity-90;
   }
   .btn-sm {
-    @apply px-2.5 py-1 text-xs;
+    @apply h-8 px-3 text-[13px];
   }
   .btn-icon {
-    @apply inline-flex h-9 w-9 items-center justify-center rounded-control text-slate-500 transition-colors hover:bg-slate-200/60 hover:text-slate-800 active:bg-slate-200 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100;
+    @apply inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-control text-ink-3 transition-colors hover:bg-surface-sunken hover:text-ink disabled:opacity-50;
   }
   .btn-icon-sm {
-    @apply inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-200/60 hover:text-slate-800 active:bg-slate-200 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100;
+    @apply inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-ink-3 transition-colors hover:bg-surface-sunken hover:text-ink disabled:opacity-50;
   }
 
   /* ---------- form controls ---------- */
   .label {
-    @apply mb-1 block text-[13px] font-medium text-slate-600 dark:text-slate-300;
+    @apply mb-1.5 block text-[13px] font-medium text-ink-2;
   }
   .input {
-    @apply w-full rounded-control border bg-white px-3 py-2 text-sm text-slate-900 transition-colors placeholder:text-slate-400 hover:border-slate-400 focus:border-brand-500 focus:outline-none dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500;
-    border-color: var(--line-strong);
+    @apply block h-10 w-full rounded-control border border-line-strong bg-surface px-3 text-[14px] text-ink transition-colors placeholder:text-ink-4 hover:border-ink-4 focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/15 disabled:bg-surface-muted disabled:opacity-60;
   }
-  .input-error {
-    @apply border-rose-400 focus:border-rose-500;
-  }
-  .field-error {
-    @apply mt-1 block text-xs text-rose-600 dark:text-rose-400;
-  }
-  .form-error {
-    @apply rounded-control border border-rose-200 bg-rose-50 px-3 py-2 text-[13px] text-rose-700 dark:border-rose-900 dark:bg-rose-950/60 dark:text-rose-300;
+  textarea.input {
+    @apply h-auto min-h-20 py-2.5 leading-7;
   }
   select.input {
-    @apply pe-8;
+    @apply pe-9;
+  }
+  .input-lg {
+    @apply h-12 rounded-card px-4 text-[15px];
+  }
+  .input-error {
+    @apply border-danger hover:border-danger focus:border-danger focus:ring-danger/15;
+  }
+  .field-error {
+    @apply mt-1.5 block text-[12.5px] leading-5 text-danger;
+  }
+  .form-error {
+    @apply rounded-control border border-danger/20 bg-danger-soft px-3.5 py-2.5 text-[13px] leading-6 text-danger;
   }
 
   /* ---------- badges / status ---------- */
   .badge {
-    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium;
+    @apply inline-flex h-6 items-center gap-1.5 whitespace-nowrap rounded-md px-2 text-[12px] font-medium leading-none;
   }
   .badge .dot {
-    @apply h-1.5 w-1.5 rounded-full bg-current;
+    @apply h-1.5 w-1.5 shrink-0 rounded-full bg-current;
   }
-  .badge-blue {
-    @apply badge bg-brand-50 text-brand-700 dark:bg-brand-900/30 dark:text-brand-200;
+  .badge-accent {
+    @apply badge bg-accent-soft text-accent;
   }
-  .badge-green {
-    @apply badge bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300;
+  .badge-success {
+    @apply badge bg-success-soft text-success;
   }
-  .badge-amber {
-    @apply badge bg-amber-50 text-amber-800 dark:bg-amber-950 dark:text-amber-300;
+  .badge-warn {
+    @apply badge bg-warn-soft text-warn;
   }
-  .badge-rose {
-    @apply badge bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300;
+  .badge-danger {
+    @apply badge bg-danger-soft text-danger;
   }
-  .badge-slate {
-    @apply badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300;
+  .badge-neutral {
+    @apply badge bg-surface-sunken text-ink-2;
+  }
+  .badge-outline {
+    @apply badge border border-line bg-surface text-ink-3;
   }
   .tag-chip {
-    @apply inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300;
+    @apply inline-flex h-6 items-center rounded-md border border-line bg-surface-muted px-2 text-[12px] text-ink-2;
+  }
+  .kbd {
+    @apply inline-flex h-5 min-w-5 items-center justify-center rounded border border-line-strong bg-surface-muted px-1 font-mono text-[11px] text-ink-3;
   }
 
-  /* ---------- nav ---------- */
+  /* ---------- tiles (knowledge-base identity) ---------- */
+  .tile {
+    @apply inline-flex shrink-0 items-center justify-center rounded-control font-bold;
+  }
+  .tile-0 {
+    background: rgb(var(--tile-0-bg));
+    color: rgb(var(--tile-0-fg));
+  }
+  .tile-1 {
+    background: rgb(var(--tile-1-bg));
+    color: rgb(var(--tile-1-fg));
+  }
+  .tile-2 {
+    background: rgb(var(--tile-2-bg));
+    color: rgb(var(--tile-2-fg));
+  }
+  .tile-3 {
+    background: rgb(var(--tile-3-bg));
+    color: rgb(var(--tile-3-fg));
+  }
+  .tile-4 {
+    background: rgb(var(--tile-4-bg));
+    color: rgb(var(--tile-4-fg));
+  }
+  .tile-5 {
+    background: rgb(var(--tile-5-bg));
+    color: rgb(var(--tile-5-fg));
+  }
+
+  /* ---------- navigation ---------- */
   .navlink {
-    @apply flex items-center gap-2.5 rounded-control px-3 py-2 text-[13.5px] font-medium text-slate-600 transition-colors hover:bg-slate-200/60 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/70 dark:hover:text-slate-100;
+    @apply relative flex h-9 items-center gap-3 rounded-control px-3 text-[13.5px] font-medium text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink;
   }
   .navlink-active {
-    @apply bg-brand-50 text-brand-700 hover:bg-brand-50 hover:text-brand-700 dark:bg-brand-900/25 dark:text-brand-200 dark:hover:bg-brand-900/25 dark:hover:text-brand-200;
+    @apply bg-accent-soft font-semibold text-accent hover:bg-accent-soft hover:text-accent;
+  }
+  .navlink-active::before {
+    content: '';
+    @apply absolute inset-y-2 start-0 w-[3px] rounded-full bg-accent;
+  }
+  .segmented {
+    @apply inline-flex items-center gap-0.5 rounded-control bg-surface-sunken p-1;
+  }
+  .segmented-item {
+    @apply inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md px-3 text-[13px] font-medium text-ink-3 transition-colors hover:text-ink;
+  }
+  .segmented-item[aria-pressed='true'] {
+    @apply bg-surface text-ink shadow-lift;
+  }
+  .tab {
+    @apply relative inline-flex h-11 items-center gap-2 whitespace-nowrap text-[14px] font-medium text-ink-3 transition-colors hover:text-ink;
+  }
+  .tab[aria-selected='true'] {
+    @apply text-ink;
+  }
+  .tab[aria-selected='true']::after {
+    content: '';
+    @apply absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-accent;
   }
 
-  /* ---------- content ---------- */
+  /* ---------- typography ---------- */
   .page-title {
-    @apply text-[22px] font-bold leading-9 tracking-tight;
+    @apply text-[24px] font-bold leading-10 tracking-normal text-ink;
   }
   .page-desc {
-    @apply mt-0.5 text-[13px] text-slate-500 dark:text-slate-400;
+    @apply mt-0.5 text-[14px] leading-7 text-ink-3;
   }
   .section-title {
-    @apply text-sm font-semibold;
+    @apply text-[15px] font-semibold leading-7 text-ink;
   }
   .meta {
-    @apply text-xs text-slate-500 dark:text-slate-400;
+    @apply text-[13px] leading-6 text-ink-3;
   }
 
   /* ---------- tables ---------- */
   .tbl {
-    @apply w-full text-sm;
+    @apply w-full border-separate border-spacing-0 text-[14px];
   }
   .tbl thead th {
-    @apply border-b px-4 py-2.5 text-start text-xs font-medium text-slate-500 dark:text-slate-400;
-    border-color: var(--line);
+    @apply h-10 whitespace-nowrap border-b border-line bg-surface-muted px-4 text-start text-[12.5px] font-medium text-ink-3;
   }
   .tbl tbody td {
-    @apply border-b px-4 py-2.5 align-middle last:border-0;
-    border-color: var(--line);
+    @apply border-b border-line px-4 py-3 align-middle text-ink;
+  }
+  .tbl tbody tr:last-child > td {
+    @apply border-b-0;
   }
   .tbl tbody tr {
-    @apply transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/40;
+    @apply transition-colors hover:bg-surface-muted;
   }
 
   /* ---------- skeleton ---------- */
   .skeleton {
-    @apply relative overflow-hidden rounded-md bg-slate-200/70 dark:bg-slate-800;
+    @apply relative overflow-hidden rounded-md bg-surface-sunken;
   }
   .skeleton::after {
     content: '';
     @apply absolute inset-0;
     transform: translateX(-100%);
-    background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.55), transparent);
+    background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.5), transparent);
     animation: shimmer 1.4s infinite;
   }
   .dark .skeleton::after {
-    background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.08), transparent);
+    background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.06), transparent);
   }
 
-  /* ---------- prose (article body) ---------- */
+  /* ---------- prose (article body: reader and editor share it) ---------- */
   .kms-prose {
-    @apply text-[16.5px] leading-[2.1] text-slate-800 dark:text-slate-200;
+    @apply text-[17px] leading-[2.05] text-ink;
     overflow-wrap: break-word;
   }
   .kms-prose > *:first-child {
@@ -217,81 +339,82 @@
   .kms-prose h2,
   .kms-prose h3,
   .kms-prose h4 {
-    @apply font-bold leading-relaxed text-slate-900 dark:text-slate-50;
+    @apply font-bold leading-[1.6] text-ink;
   }
   .kms-prose h2 {
-    @apply mb-2 mt-8 text-xl;
+    @apply mb-3 mt-12 text-[23px];
   }
   .kms-prose h3 {
-    @apply mb-1 mt-6 text-lg;
+    @apply mb-2 mt-9 text-[19px];
   }
   .kms-prose h4 {
-    @apply mb-1 mt-5 text-base;
+    @apply mb-2 mt-7 text-[16px];
+  }
+  .kms-prose ul,
+  .kms-prose ol {
+    @apply my-4 space-y-2 ps-6;
   }
   .kms-prose ul {
-    @apply my-4 space-y-1.5 pe-1;
-    list-style: disc inside;
+    list-style: disc;
   }
   .kms-prose ol {
-    @apply my-4 space-y-1.5 pe-1;
-    list-style: decimal inside;
+    list-style: decimal;
   }
   .kms-prose li::marker {
-    @apply text-brand-600 dark:text-brand-300;
+    @apply text-accent;
+  }
+  .kms-prose li > p {
+    @apply my-1;
   }
   .kms-prose blockquote {
-    @apply my-5 rounded-control border-s-2 border-brand-400 bg-brand-50/60 px-4 py-2 text-slate-700 dark:bg-brand-900/15 dark:text-slate-300;
+    @apply my-6 rounded-control border-s-[3px] border-accent bg-surface-muted py-3 pe-5 ps-5 text-ink-2;
   }
   .kms-prose pre {
-    @apply my-5 overflow-x-auto rounded-control bg-slate-900 p-4 text-[13px] leading-7 text-slate-100 dark:bg-black/60;
+    @apply my-6 overflow-x-auto rounded-card p-4 font-mono text-[13.5px] leading-7;
+    background: rgb(var(--code-bg));
+    color: rgb(var(--code-ink));
     direction: ltr;
     text-align: left;
   }
   .kms-prose code {
-    @apply rounded bg-slate-200/70 px-1 py-0.5 text-[0.85em] text-slate-800 dark:bg-slate-800 dark:text-slate-200;
+    @apply rounded bg-surface-sunken px-1.5 py-0.5 font-mono text-[0.86em] text-ink;
   }
   .kms-prose pre code {
     @apply bg-transparent p-0 text-inherit;
   }
   .kms-prose hr {
-    @apply my-8 border-slate-200 dark:border-slate-800;
+    @apply my-10 border-line;
   }
   .kms-prose a {
-    @apply text-brand-700 underline decoration-brand-300 underline-offset-4 hover:decoration-brand-600 dark:text-brand-200;
+    @apply text-accent underline decoration-accent/40 underline-offset-4 transition-colors hover:decoration-accent;
+  }
+  .kms-prose strong {
+    @apply font-bold text-ink;
   }
 
   /* ---------- editor ---------- */
   .tiptap-wrap .ProseMirror {
-    @apply min-h-64 px-5 py-4 text-[15.5px] leading-[2] outline-none;
-  }
-  .tiptap-wrap .ProseMirror p {
-    @apply my-3;
-  }
-  .tiptap-wrap .ProseMirror h2 {
-    @apply mb-2 mt-6 text-xl font-bold;
-  }
-  .tiptap-wrap .ProseMirror h3 {
-    @apply mb-1 mt-5 text-lg font-bold;
-  }
-  .tiptap-wrap .ProseMirror ul {
-    list-style: disc inside;
-  }
-  .tiptap-wrap .ProseMirror ol {
-    list-style: decimal inside;
-  }
-  .tiptap-wrap .ProseMirror blockquote {
-    @apply rounded-control border-s-2 border-brand-400 bg-brand-50/60 px-4 py-1 dark:bg-brand-900/15;
-  }
-  .tiptap-wrap .ProseMirror pre {
-    @apply my-4 overflow-x-auto rounded-control bg-slate-900 p-4 text-[13px] leading-7 text-slate-100;
-    direction: ltr;
-    text-align: left;
+    @apply min-h-[460px] caret-accent outline-none;
   }
   .toolbtn {
-    @apply inline-flex h-8 min-w-8 items-center justify-center gap-1 rounded-md px-1.5 text-[13px] font-semibold text-slate-500 transition-colors hover:bg-slate-200/70 hover:text-slate-900 active:bg-slate-200 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100;
+    @apply inline-flex h-8 min-w-8 items-center justify-center gap-1 rounded-md px-1.5 text-ink-3 transition-colors hover:bg-surface-sunken hover:text-ink disabled:opacity-40;
   }
   .toolbtn-active {
-    @apply bg-brand-100 text-brand-700 hover:bg-brand-100 hover:text-brand-700 dark:bg-brand-900/40 dark:text-brand-200 dark:hover:bg-brand-900/40 dark:hover:text-brand-200;
+    @apply bg-accent-soft text-accent hover:bg-accent-soft hover:text-accent;
+  }
+  .toolsep {
+    @apply mx-1 h-5 w-px shrink-0 bg-line;
+  }
+
+  /* ---------- overlays ---------- */
+  .toast {
+    @apply pointer-events-auto flex animate-toast-in items-start gap-3 rounded-card border border-line bg-surface p-3.5 shadow-pop;
+  }
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
   }
 }
 

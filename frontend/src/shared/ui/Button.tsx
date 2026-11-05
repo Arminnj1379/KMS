@@ -12,23 +12,20 @@ const variants: Record<Variant, string> = {
   'danger-solid': 'btn-danger-solid',
 };
 
+const sizes: Record<Size, string> = {
+  sm: 'h-8 px-3 text-[13px]',
+  md: '',
+  icon: 'h-9 w-9 px-0',
+  'icon-sm': 'h-8 w-8 px-0',
+};
+
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;
   size?: Size;
 }
 
-export function Button({ variant = 'secondary', size, className, type, ...rest }: Props): JSX.Element {
+export function Button({ variant = 'secondary', size = 'md', className, type, ...rest }: Props): JSX.Element {
   return (
-    <button
-      type={type ?? 'button'}
-      className={cn(
-        variants[variant],
-        size === 'sm' && 'btn-sm',
-        size === 'icon' && 'btn-icon h-9 w-9 p-0',
-        size === 'icon-sm' && 'btn-icon-sm p-0',
-        className,
-      )}
-      {...rest}
-    />
+    <button type={type ?? 'button'} className={cn(variants[variant], sizes[size], className)} {...rest} />
   );
 }

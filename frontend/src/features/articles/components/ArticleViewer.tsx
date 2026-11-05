@@ -6,15 +6,15 @@ interface Props {
   content: Record<string, unknown>;
 }
 
-/** Read-only Tiptap renderer for published/preview display. */
-export function ArticleViewer({ content }: Props): JSX.Element {
+/** Read-only Tiptap renderer. Shares the `kms-prose` typography with the editor. */
+export function ArticleViewer({ content }: Props): JSX.Element | null {
   const editor = useEditor({
     extensions: [StarterKit],
     content: content as never,
     editable: false,
     editorProps: {
       attributes: {
-        class: 'kms-prose px-1 py-2',
+        class: 'kms-prose',
         dir: 'auto',
       },
     },
@@ -32,7 +32,7 @@ export function ArticleViewer({ content }: Props): JSX.Element {
     };
   }, [editor]);
 
-  if (!editor) return <p className="py-8 text-center text-sm text-slate-500">…</p>;
+  if (!editor) return null;
 
   return (
     <div dir="rtl">

@@ -2,7 +2,7 @@
 
 > Updated after every phase (see task §10). Legend: ✅ done · 🟡 partial · ⬜ not started · 🛑 blocked.
 
-## Current: all phases 0–11 ✅ complete (+ UI modernization) — system prod-ready per DEPLOYMENT.md
+## Current: all phases 0–11 ✅ complete (+ UI modernization + UI redesign second pass) — system prod-ready per DEPLOYMENT.md
 
 ## Phase 11 — HTTP end-to-end journeys (supertest, real Mongo) — completed 2026-11-05 ✅
 - New `backend/test/app.e2e-spec.ts` + `test/jest-e2e.json` + `test:e2e` script: boots the real Nest app (same ValidationPipe + HttpExceptionFilter as `main.ts`) against a real rs0 Mongo (`kms_e2e`, dropped before/after), drives 10 ordered journeys over HTTP with supertest, no mocks below the HTTP line: health/ready → register-as-org-admin → KB + invite + reviewer membership → draft/autosave-no-snapshot/changelog-snapshot → 409-with-current → submit/approve→published + history + both-party notifications + read/unread → audit log + member-403 → exact + affixed Persian search → second-org isolation → logout + refresh-reuse-401.
@@ -147,6 +147,17 @@
 - Perf: Tiptap routes code-split (`React.lazy`); entry chunk 809kB → 307kB + shared async chunk.
 - Verification: `tsc --noEmit` clean, `vite build` pass, served `dist` via `vite preview` (200 + correct chunks/title), backend API smoke re-run **36/36** (untouched API intact). No fake UI — dashboard/stats all live queries; org switcher deliberately not built (backend pins callers to first membership).
 - Debt: smoke scripts + console remain ASCII-only (PS5.1 Persian console rendering); admin users table is plain (filters/sort deferred); notification type labels stay hardcoded fa (server sends codes).
+
+## UI redesign (second pass) — completed 2026-11-05 ✅ (frontend only; no backend changes)
+- Design direction (D-028): deep firouze/teal accent (`#0E6B66`), cool neutral canvas, muted status tones; self-hosted `@fontsource-variable/vazirmatn` 5.3.0 replacing Google Fonts; RGB CSS variables in `index.css` for light/dark consumed via semantic Tailwind colors (`canvas`, `surface`, `ink`, `line`, `accent`, `warn`, `danger`, `success`); status tones draft=neutral / in_review=warn / published=success / archived=outline; badge tones renamed to accent/success/warn/danger/neutral/outline.
+- Foundation: `tailwind.config.js` (token colors, fonts, shadows, radii, keyframes), `index.css` (tokens, dark theme, component classes), `index.html` (Google Fonts removed, theme-color added), `main.tsx` (font import), `format-fa.ts` (+`formatFaDay`/`formatFaRelative`/`formatFaSize`).
+- Shared UI: `header-crumbs.tsx`, `Chrome.tsx` (Breadcrumbs/PageHeader/Avatar), `Button`, `Dialog` (+`DialogFooter`), `Feedback`, `Badge`, `Toast`, `Popover` (new), `Segmented` (new), `Pager` (new), `BrandMark` (new, exports `STAR_POINTS`); helpers `theme.ts`, `ArticleStatusBadge`, `outline.ts` (`headingOutline`), `kbTileClass`, `notification`/`audit` label maps.
+- Shell: `AppShell` (drawer + collapse), `Sidebar` (grouped nav, workspace switcher, badge counts, user card), `Header` (global search `/` shortcut, bell, breadcrumbs), `AccountMenu` (theme toggle).
+- Pages redesigned: `AuthLayout`, `LoginPage`, `RegisterPage`, `DashboardPage`, `KbListPage` (segmented filter + search + `?new=1`), `KbDetailPage` (tabs overview/categories/members, roles panel, invite), `ArticleListPage`, `ArticleEditorPage` (sticky save bar, centered sheet, metadata side panel), `ArticleViewPage` (44rem measure, status strip, author lookup, TOC), `ReviewInboxPage`, `NotificationsPage`, `ActivityPage`, `SearchPage`, `ProfilePage`, `AdminPage`, `NotFoundPage`, `App.tsx` (`RouteFallback`).
+- Feature components restyled: `ArticleEditor`, `ArticleViewer`, `AttachmentsCard`, `HistoryCard`, `CategoryTree`, `SubmitReviewDialog`, `DecideDialog`.
+- QA: seeded a separate organization (`سازمان نمونه طراحی`, `qa.admin@kms.local` / `ChangeMe123!`) with 4 KBs, 10 articles, 3 users, 1 pending review, 1 approved review, 1 review request; browser sweep of all routes (dashboard, KB list/detail, article list/reader/editor, reviews, notifications, search, activity, admin, profile, 404) — no console errors, no horizontal overflow; dark/light toggle verified; create-KB dialog, editor, submit-review banner, DecideDialog, breadcrumbs, global search shortcut verified.
+- Verification: `tsc --noEmit` clean, `vite build` pass (main chunk 499.04 kB gzip 150.88 kB; CSS 57.31 kB gzip 9.73 kB); backend untouched (unit 103/103, e2e 10/10 from prior phases).
+- Debt: optional Vitest unit tests for `headingOutline`/`kbTileClass`/`formatFaRelative` not yet written; mobile viewport (drawer) verified only by class inspection (no resize tool); image-level visual QA impossible (model has no image input) — DOM measurements + console checks used instead.
 
 - [ ] Root: `docker-compose.yml`, `.env.example`, `.gitignore`, `README.md`, `package.json` (workspaces).
 - [ ] Backend scaffold + strict TS + lint + env + logging + filters + health + swagger + Prisma schema/seed.

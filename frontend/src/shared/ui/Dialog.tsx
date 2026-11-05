@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { X } from 'lucide-react';
+import { t } from '../../i18n';
 import { cn } from '../lib/cn';
 import { Button } from './Button';
 
@@ -33,32 +34,36 @@ export function Dialog({
 
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center" role="dialog" aria-modal="true" aria-label={title}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-label={title}>
       <button
         type="button"
-        aria-label="close"
+        aria-label={t('common.close')}
         onClick={onClose}
-        className="absolute inset-0 animate-fade-in cursor-default bg-slate-950/45 backdrop-blur-[2px]"
+        className="absolute inset-0 animate-fade-in cursor-default bg-overlay/40 backdrop-blur-[2px]"
       />
       <div
         className={cn(
-          'surface relative w-full animate-rise-in p-5 shadow-pop sm:p-6',
-          wide ? 'max-w-2xl' : 'max-w-lg',
+          'surface relative flex max-h-[88vh] w-full animate-rise-in flex-col rounded-b-none shadow-pop sm:rounded-card',
+          wide ? 'sm:max-w-2xl' : 'sm:max-w-lg',
         )}
       >
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 className="text-base font-bold">{title}</h2>
-            {description && <p className="mt-0.5 text-[13px] text-slate-500 dark:text-slate-400">{description}</p>}
+        <div className="flex items-start justify-between gap-4 px-6 pb-4 pt-5">
+          <div className="min-w-0">
+            <h2 className="text-[17px] font-bold leading-7">{title}</h2>
+            {description && <p className="meta mt-1">{description}</p>}
           </div>
-          <button type="button" onClick={onClose} className="btn-icon-sm" aria-label="بستن">
-            <X size={16} />
+          <button type="button" onClick={onClose} className="btn-icon-sm -mt-1 -me-1.5" aria-label={t('common.close')}>
+            <X size={17} />
           </button>
         </div>
-        <div className="mt-4">{children}</div>
+        <div className="overflow-y-auto px-6 pb-6">{children}</div>
       </div>
     </div>
   );
+}
+
+export function DialogFooter({ children }: { children: React.ReactNode }): JSX.Element {
+  return <div className="mt-6 flex flex-wrap justify-end gap-2 border-t border-line pt-4">{children}</div>;
 }
 
 export function ConfirmDialog({
@@ -82,15 +87,15 @@ export function ConfirmDialog({
 }): JSX.Element | null {
   return (
     <Dialog open={open} title={title} onClose={onClose}>
-      <p className="text-sm leading-7 text-slate-600 dark:text-slate-300">{body}</p>
-      <div className="mt-5 flex justify-end gap-2">
+      <p className="text-[14px] leading-7 text-ink-2">{body}</p>
+      <DialogFooter>
         <Button variant="ghost" onClick={onClose}>
-          انصراف
+          {t('common.cancel')}
         </Button>
         <Button variant={danger ? 'danger-solid' : 'primary'} disabled={pending} onClick={onConfirm}>
           {confirmLabel}
         </Button>
-      </div>
+      </DialogFooter>
     </Dialog>
   );
 }

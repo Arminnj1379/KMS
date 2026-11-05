@@ -1,14 +1,18 @@
 import axios from 'axios';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { AlertTriangle, Check, CloudOff, Loader2, Megaphone, Save } from 'lucide-react';
+import { ArrowRight, Check, Loader2, Megaphone, Save, SlidersHorizontal, TriangleAlert } from 'lucide-react';
 import { t } from '../i18n';
 import { toApiMessage } from '../shared/lib/api-client';
+import { formatFaDate, formatFaDay, formatFaNumber } from '../shared/lib/format-fa';
 import { useToast } from '../shared/ui/Toast';
-import { PageHeader } from '../shared/ui/Chrome';
 import { Button } from '../shared/ui/Button';
-import { Field, Select, Textarea, TextInput } from '../shared/ui/Field';
+import { Field, Select, TextInput } from '../shared/ui/Field';
+import { Badge } from '../shared/ui/Badge';
+import { Skeleton } from '../shared/ui/Feedback';
 import { ArticleEditor } from '../features/articles/components/ArticleEditor';
+import { ArticleStatusBadge } from '../features/articles/components/ArticleStatusBadge';
+import { AttachmentsCard } from '../features/documents/AttachmentsCard';
 import type { Article } from '../features/articles/api';
 import {
   useArticle,
@@ -19,7 +23,6 @@ import {
 import { parseTagNames } from '../features/articles/schemas';
 import { useCategories, useKb } from '../features/knowledge-bases/hooks';
 import type { CategoryNode } from '../features/knowledge-bases/api';
-import { formatFaNumber } from '../shared/lib/format-fa';
 
 function flatten(nodes: CategoryNode[], out: CategoryNode[] = []): CategoryNode[] {
   for (const n of nodes) {
@@ -53,6 +56,16 @@ function extractConflict(error: unknown): Article | null {
 
 const EMPTY_DOC: Record<string, unknown> = { type: 'doc', content: [{ type: 'paragraph' }] };
 
+function EditorSkeleton(): JSX.Element {
+  return (
+    <div className="mx-auto max-w-[760px] space-y-6 pt-10" aria-label={t('common.loading')}>
+      <Skeleton className="h-10 w-3/4" />
+      <Skeleton className="h-5 w-1/2" />
+      <Skeleton className="h-80" />
+    </div>
+  );
+}
+
 export function ArticleEditorPage(): JSX.Element {
   const { kbId = '', articleId } = useParams();
   const isCreate = articleId === undefined;
@@ -76,6 +89,7 @@ export function ArticleEditorPage(): JSX.Element {
   const [conflict, setConflict] = useState<Conflict | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [metaOpen, setMetaOpen] = useState(true);
   const contentRef = useRef<{ json: Record<string, unknown>; text: string } | null>(null);
   const dirtyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hydrated = useRef(false);
@@ -221,152 +235,208 @@ export function ArticleEditorPage(): JSX.Element {
 
   if (!isCreate && (existing.isPending || !hydrated.current)) {
     if (existing.isError) {
-      return (
-        <p className="mx-auto max-w-3xl py-16 text-center text-sm text-rose-600">
-          {toApiMessage(existing.error, t('common.error'))}
-        </p>
-      );
+      return <p className="mx-auto max-w-3xl py-16 text-center text-sm text-danger">{toApiMessage(existing.error, t('common.error'))}</p>;
     }
-    return <p className="mx-auto max-w-3xl py-16 text-center text-sm text-slate-500">{t('common.loading')}</p>;
+    return <EditorSkeleton />;
   }
 
+  const current = !isCreate ? existing.data : undefined;
+  const saveBusy = create.isPending || update.isPending;
+
   return (
-    <section className="mx-auto max-w-3xl space-y-4">
-      <PageHeader
-        title={isCreate ? t('article.create') : t('article.edit')}
-        breadcrumbs={[
-          { label: t('nav.knowledgeBases'), to: '/kbs' },
-          ...(kb.data ? [{ label: kb.data.title, to: `/kbs/${kbId}` }] : []),
-          { label: t('article.listTitle'), to: `/kbs/${kbId}/articles` },
-          { label: isCreate ? t('article.create') : (existing.data?.title ?? t('article.edit')) },
-        ]}
-        actions={
-          !isCreate ? (
-            <span className="meta flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 dark:bg-slate-800" role="status">
-              {saving ? (
-                <>
-                  <Loader2 size={13} className="animate-spin" />
-                  {t('article.saving')}
-                </>
-              ) : savedAt ? (
-                <>
-                  <Check size={13} className="text-emerald-600" />
-                  {t('article.autosaved')}: {savedAt}
-                </>
-              ) : (
-                <>
-                  <CloudOff size={13} />
-                  {t('article.versionLabel', { version: formatFaNumber(version) })}
-                </>
-              )}
-            </span>
-          ) : undefined
-        }
-      />
-
-      <div className="surface grid gap-4 p-5 sm:grid-cols-2">
-        <Field label={t('kb.title')}>
-          <TextInput value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={200} />
-        </Field>
-        {isCreate && (
-          <Field label={t('kb.slug')}>
-            <TextInput value={slug} onChange={(e) => setSlug(e.target.value)} required dir="ltr" pattern="[a-z0-9]+(-[a-z0-9]+)*" />
-          </Field>
-        )}
-        <div className="sm:col-span-2">
-          <Field label={t('kb.description')}>
-            <Textarea value={summary} onChange={(e) => setSummary(e.target.value)} rows={2} maxLength={500} />
-          </Field>
-        </div>
-        <Field label={t('kb.categories')}>
-          <Select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-            <option value="">{t('article.noCategory')}</option>
-            {flatCats.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.path}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label={t('article.tagsPh')}>
-          <TextInput value={tags} onChange={(e) => setTags(e.target.value)} placeholder={t('article.tagsPh')} />
-        </Field>
-        {!isCreate && (
-          <div className="sm:col-span-2">
-            <Field label={t('article.changelogPh')}>
-              <TextInput
-                value={changelog}
-                onChange={(e) => setChangelog(e.target.value)}
-                placeholder={t('article.changelogHint')}
-                maxLength={200}
-              />
-            </Field>
-          </div>
-        )}
-      </div>
-
-      {!isCreate && existing.data ? (
-        <ArticleEditor
-          key={existing.data.id}
-          initialContent={existing.data.contentJson}
-          onChange={onEditorChange}
-        />
-      ) : (
-        isCreate && <ArticleEditor initialContent={EMPTY_DOC} onChange={onEditorChange} autofocus />
-      )}
-
-      {conflict && (
-        <div className="surface border-amber-300 bg-amber-50/60 p-4 dark:border-amber-800 dark:bg-amber-950/40" role="alert">
-          <p className="flex items-center gap-2 text-sm font-bold">
-            <AlertTriangle size={16} className="text-amber-600" />
-            {t('article.conflictTitle')}
-          </p>
-          <p className="mt-1 text-sm leading-7 text-slate-600 dark:text-slate-300">{t('article.conflictBody')}</p>
-          <div className="mt-3 flex gap-2">
-            <Button variant="secondary" size="sm" onClick={onReloadServer}>
-              {t('article.reloadServer')}
-            </Button>
-            <Button variant="primary" size="sm" onClick={() => void onForceSave()}>
-              {t('article.forceSave')}
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {error && <p className="form-error" role="alert">{error}</p>}
-      {create.isError && <p className="form-error" role="alert">{toApiMessage(create.error, t('common.error'))}</p>}
-
-      <div className="sticky bottom-4 flex items-center gap-2 rounded-card border bg-white/90 p-2.5 shadow-pop backdrop-blur dark:bg-slate-900/90" style={{ borderColor: 'var(--line)' }}>
-        <Button
-          variant="primary"
-          onClick={() => void onSave()}
-          disabled={create.isPending || update.isPending}
+    <div className="-mx-4 sm:-mx-6 lg:-mx-10">
+      <div className="sticky top-14 z-20 flex h-14 items-center gap-3 border-b border-line bg-canvas/90 px-4 backdrop-blur-md sm:px-6 lg:px-10">
+        <Link
+          to={isCreate ? `/kbs/${kbId}/articles` : `/kbs/${kbId}/articles/${articleId}`}
+          className="btn-icon -ms-2"
+          aria-label={t('article.backToArticles')}
+          title={t('article.backToArticles')}
         >
-          <Save size={16} />
-          {t('common.save')}
-        </Button>
-        {!isCreate && canPublish && (
-          <Button
-            variant="secondary"
-            disabled={publish.isPending}
-            onClick={() => void (async () => {
-              try {
-                await publish.mutateAsync();
-                toast.success(t('article.publishedToast'));
-                navigate(`/kbs/${kbId}/articles/${articleId}`);
-              } catch (err) {
-                toast.error(toApiMessage(err, t('common.error')));
-              }
-            })()}
-          >
-            <Megaphone size={16} />
-            {t('article.publish')}
-          </Button>
-        )}
-        <Link to={isCreate ? `/kbs/${kbId}/articles` : `/kbs/${kbId}/articles/${articleId}`} className="btn-ghost btn-sm ms-auto">
-          {t('article.backToArticles')}
+          <ArrowRight size={18} />
         </Link>
+
+        <span className="min-w-0 truncate text-[13px] text-ink-3" role="status" aria-live="polite">
+          {saving ? (
+            <span className="inline-flex items-center gap-1.5">
+              <Loader2 size={14} className="animate-spin" aria-hidden />
+              {t('article.savingNow')}
+            </span>
+          ) : savedAt ? (
+            <span className="inline-flex items-center gap-1.5">
+              <Check size={14} className="text-success" aria-hidden />
+              {t('article.savedAt', { time: savedAt })}
+            </span>
+          ) : current ? (
+            t('article.versionLabel', { version: formatFaNumber(version) })
+          ) : (
+            t('article.newDraftHint')
+          )}
+        </span>
+
+        <div className="ms-auto flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setMetaOpen((v) => !v)}
+            aria-pressed={metaOpen}
+            className="hidden lg:inline-flex"
+          >
+            <SlidersHorizontal size={15} />
+            {t('article.metaToggle')}
+          </Button>
+          {!isCreate && canPublish && (
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={publish.isPending}
+              onClick={() =>
+                void (async () => {
+                  try {
+                    await publish.mutateAsync();
+                    toast.success(t('article.publishedToast'));
+                    navigate(`/kbs/${kbId}/articles/${articleId}`);
+                  } catch (err) {
+                    toast.error(toApiMessage(err, t('common.error')));
+                  }
+                })()
+              }
+            >
+              <Megaphone size={15} />
+              {t('article.publishNow')}
+            </Button>
+          )}
+          <Button variant="primary" size="sm" onClick={() => void onSave()} disabled={saveBusy}>
+            <Save size={15} />
+            {t('article.saveDraft')}
+          </Button>
+        </div>
       </div>
-    </section>
+
+      <div className="grid gap-8 px-4 pb-16 pt-10 sm:px-6 lg:grid-cols-[minmax(0,1fr)_288px] lg:px-10">
+        <div className="min-w-0">
+          <div className="mx-auto max-w-[760px] space-y-5">
+            {conflict && (
+              <div className="rounded-card border border-warn/30 bg-warn-soft p-4" role="alert">
+                <p className="flex items-center gap-2 text-[14px] font-semibold text-warn">
+                  <TriangleAlert size={16} aria-hidden />
+                  {t('article.conflictTitle')}
+                </p>
+                <p className="mt-1.5 text-[13.5px] leading-7 text-ink-2">{t('article.conflictBody')}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button variant="secondary" size="sm" onClick={onReloadServer}>
+                    {t('article.reloadServer')}
+                  </Button>
+                  <Button variant="primary" size="sm" onClick={() => void onForceSave()}>
+                    {t('article.forceSave')}
+                  </Button>
+                </div>
+              </div>
+            )}
+            {error && <p className="form-error" role="alert">{error}</p>}
+            {create.isError && (
+              <p className="form-error" role="alert">
+                {toApiMessage(create.error, t('common.error'))}
+              </p>
+            )}
+
+            <div className="surface px-6 py-10 sm:px-12 sm:py-12">
+              <input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                required
+                maxLength={200}
+                placeholder={t('article.titlePh')}
+                aria-label={t('kb.title')}
+                className="w-full bg-transparent text-[30px] font-bold leading-[1.5] text-ink placeholder:text-ink-4 focus:outline-none"
+              />
+              <textarea
+                value={summary}
+                onChange={(e) => setSummary(e.target.value)}
+                rows={2}
+                maxLength={500}
+                placeholder={t('article.summaryPh')}
+                aria-label={t('kb.description')}
+                className="mt-3 w-full resize-none bg-transparent text-[16px] leading-8 text-ink-2 placeholder:text-ink-4 focus:outline-none"
+              />
+              <div className="my-8 border-t border-line" />
+              {!isCreate && existing.data ? (
+                <ArticleEditor key={existing.data.id} initialContent={existing.data.contentJson} onChange={onEditorChange} />
+              ) : (
+                isCreate && <ArticleEditor initialContent={EMPTY_DOC} onChange={onEditorChange} autofocus />
+              )}
+            </div>
+          </div>
+        </div>
+
+        <aside className={metaOpen ? 'space-y-5 lg:sticky lg:top-32 lg:self-start' : 'hidden'}>
+          <section className="surface space-y-5 p-5" aria-label={t('article.metaPanel')}>
+            <h2 className="section-title">{t('article.metaPanel')}</h2>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="meta me-1">{t('article.statusLabel')}</span>
+              {current ? <ArticleStatusBadge status={current.status} /> : <Badge tone="neutral" dot>{t('article.status_draft')}</Badge>}
+              {current && <Badge tone="outline">{t('article.versionLabel', { version: formatFaNumber(version) })}</Badge>}
+            </div>
+            {current && (
+              <p className="meta -mt-2">
+                {current.status === 'published'
+                  ? t('article.publishedOn', { date: formatFaDay(current.publishedAt ?? current.updatedAt) })
+                  : current.status === 'in_review'
+                    ? t('article.inReviewHint')
+                    : t('article.draftHint')}
+              </p>
+            )}
+
+            {isCreate ? (
+              <Field label={t('article.slugLabel')}>
+                <TextInput value={slug} onChange={(e) => setSlug(e.target.value)} required dir="ltr" pattern="[a-z0-9]+(-[a-z0-9]+)*" />
+              </Field>
+            ) : (
+              <div>
+                <span className="label">{t('article.slugLabel')}</span>
+                <p dir="ltr" className="truncate rounded-control bg-surface-muted px-3 py-2 font-mono text-[13px] text-ink-2">
+                  {slug}
+                </p>
+              </div>
+            )}
+
+            <Field label={t('article.categoryLabel')}>
+              <Select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+                <option value="">{t('article.noCategory')}</option>
+                {flatCats.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.path}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+
+            <Field label={t('article.tagsLabel')}>
+              <TextInput value={tags} onChange={(e) => setTags(e.target.value)} placeholder={t('article.tagsPh')} />
+            </Field>
+
+            {!isCreate && (
+              <Field label={t('article.changelogLabel')}>
+                <TextInput
+                  value={changelog}
+                  onChange={(e) => setChangelog(e.target.value)}
+                  placeholder={t('article.changelogPh')}
+                  maxLength={200}
+                />
+                <span className="meta mt-1.5 block text-[12px] leading-5">{t('article.changelogHint')}</span>
+              </Field>
+            )}
+
+            {current && (
+              <p className="meta">
+                {t('article.lastEdited')}: {formatFaDate(current.updatedAt)}
+              </p>
+            )}
+          </section>
+
+          {current && <AttachmentsCard kbId={kbId} articleId={articleId ?? ''} canWrite />}
+        </aside>
+      </div>
+    </div>
   );
 }

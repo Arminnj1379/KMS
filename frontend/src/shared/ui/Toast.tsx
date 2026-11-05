@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
-import { AlertCircle, CheckCircle2, Info } from 'lucide-react';
+import { CircleAlert, CircleCheck, Info } from 'lucide-react';
 import { cn } from '../lib/cn';
 
 type Tone = 'success' | 'error' | 'info';
@@ -19,15 +19,15 @@ interface ToastApi {
 const ToastContext = createContext<ToastApi | null>(null);
 
 const icons = {
-  success: CheckCircle2,
-  error: AlertCircle,
+  success: CircleCheck,
+  error: CircleAlert,
   info: Info,
 };
 
-const bar = {
-  success: 'bg-emerald-500',
-  error: 'bg-rose-500',
-  info: 'bg-brand-500',
+const iconTone = {
+  success: 'text-success',
+  error: 'text-danger',
+  info: 'text-accent',
 };
 
 export function useToast(): ToastApi {
@@ -42,9 +42,9 @@ export function ToastProvider({ children }: { children: ReactNode }): JSX.Elemen
 
   const push = useCallback((tone: Tone, message: string) => {
     const id = nextId.current++;
-    setItems((prev) => [...prev.slice(-3), { id, tone, message }]);
+    setItems((prev) => [...prev.slice(-2), { id, tone, message }]);
     window.setTimeout(() => {
-      setItems((prev) => prev.filter((t) => t.id !== id));
+      setItems((prev) => prev.filter((item) => item.id !== id));
     }, 4200);
   }, []);
 
@@ -62,26 +62,14 @@ export function ToastProvider({ children }: { children: ReactNode }): JSX.Elemen
       {children}
       <div
         aria-live="polite"
-        className="pointer-events-none fixed bottom-5 left-1/2 z-[60] flex w-full max-w-sm -translate-x-1/2 flex-col gap-2 px-4"
+        className="pointer-events-none fixed inset-x-0 bottom-5 z-[60] mx-auto flex w-full max-w-sm flex-col gap-2 px-4"
       >
         {items.map((item) => {
           const Icon = icons[item.tone];
           return (
-            <div
-              key={item.id}
-              className="surface pointer-events-auto flex animate-toast-in items-start gap-2.5 overflow-hidden p-3.5 shadow-pop"
-            >
-              <span className={cn('mt-1.5 h-8 w-1 shrink-0 self-stretch rounded-full', bar[item.tone])} aria-hidden />
-              <Icon
-                size={18}
-                className={cn(
-                  'mt-0.5 shrink-0',
-                  item.tone === 'success' && 'text-emerald-600 dark:text-emerald-400',
-                  item.tone === 'error' && 'text-rose-600 dark:text-rose-400',
-                  item.tone === 'info' && 'text-brand-600 dark:text-brand-300',
-                )}
-              />
-              <p className="text-[13px] font-medium leading-6">{item.message}</p>
+            <div key={item.id} className="toast">
+              <Icon size={18} className={cn('mt-0.5 shrink-0', iconTone[item.tone])} />
+              <p className="text-[13.5px] font-medium leading-6 text-ink">{item.message}</p>
             </div>
           );
         })}

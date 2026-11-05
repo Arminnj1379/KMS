@@ -73,10 +73,11 @@ export function useChangePassword() {
   });
 }
 
-export function useUsers(search: string) {
+export function useUsers(search: string, enabled = true) {
   return useQuery({
     queryKey: authKeys.users(search),
     queryFn: () => listUsers({ page: 1, pageSize: 50, search: search || undefined }),
+    enabled,
   });
 }
 

@@ -3,7 +3,7 @@ import { useForm } from 'react-hook-form';
 import { t } from '../../i18n';
 import { toApiMessage } from '../../shared/lib/api-client';
 import { Button } from '../../shared/ui/Button';
-import { Dialog } from '../../shared/ui/Dialog';
+import { Dialog, DialogFooter } from '../../shared/ui/Dialog';
 import { Field, Select, Textarea } from '../../shared/ui/Field';
 import { useKbMembers } from '../knowledge-bases/hooks';
 import { useSubmitReview } from './hooks';
@@ -35,8 +35,8 @@ export function SubmitReviewDialog({
   }
 
   return (
-    <Dialog open={open} title={t('review.submitTitle')} onClose={onClose}>
-      <form onSubmit={(e) => void form.handleSubmit(onSubmit)(e)} className="space-y-4" noValidate>
+    <Dialog open={open} title={t('review.submitTitle')} description={t('review.submitDesc')} onClose={onClose}>
+      <form onSubmit={(e) => void form.handleSubmit(onSubmit)(e)} className="space-y-5" noValidate>
         <Field label={t('review.reviewer')} error={form.formState.errors.reviewerId?.message}>
           <Select {...form.register('reviewerId')} disabled={members.isPending} aria-invalid={!!form.formState.errors.reviewerId}>
             <option value="">{members.isPending ? t('common.loading') : t('review.pickReviewer')}</option>
@@ -48,22 +48,22 @@ export function SubmitReviewDialog({
           </Select>
         </Field>
         {eligible.length === 0 && !members.isPending && (
-          <p className="rounded-control bg-amber-50 px-3 py-2 text-[13px] text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+          <p className="rounded-control border border-warn/25 bg-warn-soft px-3.5 py-2.5 text-[13px] leading-6 text-warn">
             {t('review.noEligibleReviewer')}
           </p>
         )}
         <Field label={t('review.commentOptional')} error={form.formState.errors.comment?.message}>
-          <Textarea {...form.register('comment')} rows={2} maxLength={500} />
+          <Textarea {...form.register('comment')} rows={3} maxLength={500} />
         </Field>
         {submit.isError && <p className="form-error">{toApiMessage(submit.error, t('common.error'))}</p>}
-        <div className="flex justify-end gap-2">
+        <DialogFooter>
           <Button variant="ghost" onClick={onClose}>
             {t('common.cancel')}
           </Button>
           <Button type="submit" variant="primary" disabled={submit.isPending}>
             {t('review.submit')}
           </Button>
-        </div>
+        </DialogFooter>
       </form>
     </Dialog>
   );

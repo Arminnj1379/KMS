@@ -3,7 +3,7 @@ import { useForm } from 'react-hook-form';
 import { t } from '../../i18n';
 import { toApiMessage } from '../../shared/lib/api-client';
 import { Button } from '../../shared/ui/Button';
-import { Dialog } from '../../shared/ui/Dialog';
+import { Dialog, DialogFooter } from '../../shared/ui/Dialog';
 import { Field, Textarea } from '../../shared/ui/Field';
 import { decideReviewSchema, type DecideReviewInput } from './schemas';
 
@@ -37,19 +37,19 @@ export function DecideDialog({
 
   return (
     <Dialog open={open} title={title} onClose={onClose}>
-      <form onSubmit={(e) => void form.handleSubmit(onSubmit)(e)} className="space-y-4" noValidate>
+      <form onSubmit={(e) => void form.handleSubmit(onSubmit)(e)} className="space-y-5" noValidate>
         <Field label={t('review.decisionNote')} error={form.formState.errors.comment?.message}>
-          <Textarea {...form.register('comment')} rows={2} maxLength={500} />
+          <Textarea {...form.register('comment')} rows={3} maxLength={500} />
         </Field>
         {error ? <p className="form-error">{toApiMessage(error, t('common.error'))}</p> : null}
-        <div className="flex justify-end gap-2">
+        <DialogFooter>
           <Button variant="ghost" onClick={onClose}>
             {t('common.cancel')}
           </Button>
           <Button type="submit" variant={danger ? 'danger-solid' : 'primary'} disabled={pending}>
             {confirmLabel}
           </Button>
-        </div>
+        </DialogFooter>
       </form>
     </Dialog>
   );

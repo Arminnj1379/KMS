@@ -1,54 +1,47 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CheckCheck, ClipboardCheck, ClipboardList, Inbox } from 'lucide-react';
-import { t } from '../i18n';
+import { CheckCheck, ClipboardCheck, Inbox } from 'lucide-react';
+import { t, type I18nKey } from '../i18n';
 import { toApiMessage } from '../shared/lib/api-client';
+import { formatFaRelative } from '../shared/lib/format-fa';
 import { useToast } from '../shared/ui/Toast';
 import { PageHeader } from '../shared/ui/Chrome';
 import { Button } from '../shared/ui/Button';
-import { DecideDialog } from '../features/approval/DecideDialog';
-import { Badge } from '../shared/ui/Badge';
+import { Badge, type Tone } from '../shared/ui/Badge';
 import { EmptyState, InlineError, Skeleton } from '../shared/ui/Feedback';
+import { Segmented } from '../shared/ui/Segmented';
+import { DecideDialog } from '../features/approval/DecideDialog';
 import { useApproveReview, useCancelReview, useRejectReview, useReviewInbox } from '../features/approval/hooks';
 import type { ReviewRequest } from '../features/approval/api';
-import { formatFaDate } from '../shared/lib/format-fa';
 
-function StatusBadge({ status }: { status: string }): JSX.Element {
-  const tone = status === 'approved' ? 'green' : status === 'rejected' ? 'rose' : status === 'cancelled' ? 'slate' : 'amber';
-  const labels: Record<string, string> = {
-    pending: t('review.status_pending'),
-    approved: t('review.status_approved'),
-    rejected: t('review.status_rejected'),
-    cancelled: t('review.status_cancelled'),
-  };
-  return <Badge tone={tone}>{labels[status] ?? status}</Badge>;
-}
+type Tab = 'assigned' | 'mine';
+
+const statusTone: Record<string, Tone> = { pending: 'warn', approved: 'success', rejected: 'danger', cancelled: 'neutral' };
 
 function RequestRow({ r, actions }: { r: ReviewRequest; actions?: React.ReactNode }): JSX.Element {
   return (
-    <li className="px-5 py-3.5 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/40">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          <Link
-            to={`/kbs/${r.kbSlug}/articles/${r.articleSlug}`}
-            className="block truncate text-sm font-bold hover:text-brand-700 dark:hover:text-brand-200"
-          >
-            {r.articleTitle}
-          </Link>
-          <p className="meta mt-0.5 truncate">
-            {r.kbTitle} · {formatFaDate(r.createdAt)}
-          </p>
-        </div>
-        <StatusBadge status={r.status} />
+    <li className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
+      <div className="min-w-0 flex-1 space-y-1">
+        <Link to={`/kbs/${r.kbSlug}/articles/${r.articleSlug}`} dir="auto" className="block truncate text-[14.5px] font-semibold hover:text-accent">
+          {r.articleTitle}
+        </Link>
+        <p className="meta flex flex-wrap items-center gap-x-4 gap-y-0.5">
+          <span className="truncate">{r.kbTitle}</span>
+          <span>{t('review.requestedAt', { date: formatFaRelative(r.createdAt) })}</span>
+        </p>
+        {r.comment && <p dir="auto" className="line-clamp-2 pt-1 text-[13.5px] leading-7 text-ink-2">{r.comment}</p>}
+        {actions && <div className="flex flex-wrap gap-2 pt-2">{actions}</div>}
       </div>
-      {r.comment && <p className="mt-1.5 text-[13px] leading-6 text-slate-600 dark:text-slate-300">{r.comment}</p>}
-      {actions && <div className="mt-2.5 flex flex-wrap gap-2">{actions}</div>}
+      <Badge tone={statusTone[r.status] ?? 'neutral'} dot className="shrink-0">
+        {t(`review.status_${r.status}` as I18nKey)}
+      </Badge>
     </li>
   );
 }
 
 export function ReviewInboxPage(): JSX.Element {
   const toast = useToast();
+  const [tab, setTab] = useState<Tab>('assigned');
   const assigned = useReviewInbox({ role: 'reviewer', status: 'pending', pageSize: 50 });
   const mine = useReviewInbox({ role: 'requester', pageSize: 50 });
   const approve = useApproveReview();
@@ -82,90 +75,93 @@ export function ReviewInboxPage(): JSX.Element {
   }
 
   return (
-    <section className="mx-auto max-w-3xl space-y-5">
+    <div className="space-y-6">
       <PageHeader title={t('review.inboxTitle')} description={t('review.inboxDesc')} />
 
-      <div className="surface overflow-hidden">
-        <div className="hairline-b flex items-center gap-2 px-5 py-3.5">
-          <ClipboardCheck size={16} className="text-slate-400" />
-          <h2 className="section-title">{t('review.assignedToMe')}</h2>
-          {assigned.data && assigned.data.total > 0 && (
-            <span className="badge-amber">{assigned.data.total}</span>
-          )}
-        </div>
-        {assigned.isPending && (
-          <div className="space-y-2.5 p-5">
-            <Skeleton className="h-12" />
-            <Skeleton className="h-12" />
-          </div>
-        )}
-        {assigned.isError && (
-          <div className="p-5">
-            <InlineError message={toApiMessage(assigned.error, t('common.error'))} onRetry={() => void assigned.refetch()} />
-          </div>
-        )}
-        {assigned.data && assigned.data.items.length === 0 && (
-          <EmptyState icon={ClipboardCheck} title={t('review.noAssigned')} hint={t('review.noAssignedHint')} />
-        )}
-        {assigned.data && assigned.data.items.length > 0 && (
-          <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-            {assigned.data.items.map((r) => (
-              <RequestRow
-                key={r.id}
-                r={r}
-                actions={
-                  <>
-                    <Button variant="primary" size="sm" disabled={approve.isPending} onClick={() => setDialog({ mode: 'approve', id: r.id })}>
-                      <CheckCheck size={15} />
-                      {t('review.approve')}
-                    </Button>
-                    <Button variant="danger" size="sm" disabled={reject.isPending} onClick={() => setDialog({ mode: 'reject', id: r.id })}>
-                      {t('review.reject')}
-                    </Button>
-                  </>
-                }
-              />
-            ))}
-          </ul>
-        )}
-      </div>
+      <Segmented
+        label={t('review.inboxTitle')}
+        value={tab}
+        onChange={setTab}
+        options={[
+          { value: 'assigned', label: t('review.tabAssigned'), count: assigned.data?.total },
+          { value: 'mine', label: t('review.tabMine'), count: mine.data?.total },
+        ]}
+      />
 
-      <div className="surface overflow-hidden">
-        <div className="hairline-b flex items-center gap-2 px-5 py-3.5">
-          <ClipboardList size={16} className="text-slate-400" />
-          <h2 className="section-title">{t('review.myRequests')}</h2>
-        </div>
-        {mine.isPending && (
-          <div className="space-y-2.5 p-5">
-            <Skeleton className="h-12" />
-          </div>
-        )}
-        {mine.isError && (
-          <div className="p-5">
-            <InlineError message={toApiMessage(mine.error, t('common.error'))} onRetry={() => void mine.refetch()} />
-          </div>
-        )}
-        {mine.data && mine.data.items.length === 0 && (
-          <EmptyState icon={Inbox} title={t('review.noMine')} hint={t('review.noMineHint')} />
-        )}
-        {mine.data && mine.data.items.length > 0 && (
-          <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-            {mine.data.items.map((r) => (
-              <RequestRow
-                key={r.id}
-                r={r}
-                actions={
-                  r.status === 'pending' ? (
-                    <Button variant="ghost" size="sm" disabled={cancel.isPending} onClick={() => void onCancel(r.id)}>
-                      {t('review.cancel')}
-                    </Button>
-                  ) : undefined
-                }
-              />
-            ))}
-          </ul>
-        )}
-      </div>
+      {tab === 'assigned' && (
+        <section className="surface overflow-hidden">
+          {assigned.isPending && (
+            <div className="space-y-3 p-5">
+              <Skeleton className="h-16" />
+              <Skeleton className="h-16" />
+            </div>
+          )}
+          {assigned.isError && (
+            <div className="p-5">
+              <InlineError message={toApiMessage(assigned.error, t('common.error'))} onRetry={() => void assigned.refetch()} />
+            </div>
+          )}
+          {assigned.data && assigned.data.items.length === 0 && (
+            <EmptyState icon={ClipboardCheck} title={t('review.noAssigned')} hint={t('review.noAssignedHint')} />
+          )}
+          {assigned.data && assigned.data.items.length > 0 && (
+            <ul className="divide-y divide-line">
+              {assigned.data.items.map((r) => (
+                <RequestRow
+                  key={r.id}
+                  r={r}
+                  actions={
+                    <>
+                      <Button variant="primary" size="sm" disabled={approve.isPending} onClick={() => setDialog({ mode: 'approve', id: r.id })}>
+                        <CheckCheck size={15} />
+                        {t('review.approve')}
+                      </Button>
+                      <Button variant="danger" size="sm" disabled={reject.isPending} onClick={() => setDialog({ mode: 'reject', id: r.id })}>
+                        {t('review.reject')}
+                      </Button>
+                    </>
+                  }
+                />
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+
+      {tab === 'mine' && (
+        <section className="surface overflow-hidden">
+          {mine.isPending && (
+            <div className="space-y-3 p-5">
+              <Skeleton className="h-16" />
+            </div>
+          )}
+          {mine.isError && (
+            <div className="p-5">
+              <InlineError message={toApiMessage(mine.error, t('common.error'))} onRetry={() => void mine.refetch()} />
+            </div>
+          )}
+          {mine.data && mine.data.items.length === 0 && (
+            <EmptyState icon={Inbox} title={t('review.noMine')} hint={t('review.noMineHint')} />
+          )}
+          {mine.data && mine.data.items.length > 0 && (
+            <ul className="divide-y divide-line">
+              {mine.data.items.map((r) => (
+                <RequestRow
+                  key={r.id}
+                  r={r}
+                  actions={
+                    r.status === 'pending' ? (
+                      <Button variant="ghost" size="sm" disabled={cancel.isPending} onClick={() => void onCancel(r.id)}>
+                        {t('review.cancel')}
+                      </Button>
+                    ) : undefined
+                  }
+                />
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
 
       <DecideDialog
         title={dialog?.mode === 'approve' ? t('review.approveTitle') : t('review.rejectTitle')}
@@ -177,6 +173,6 @@ export function ReviewInboxPage(): JSX.Element {
         onClose={() => setDialog(null)}
         onConfirm={onConfirm}
       />
-    </section>
+    </div>
   );
 }

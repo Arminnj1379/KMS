@@ -1,16 +1,19 @@
 import { useRef, useState } from 'react';
-import { Download, FileText, Paperclip, Plus, X } from 'lucide-react';
+import { Download, FileArchive, FileImage, FileSpreadsheet, FileText, Paperclip, Plus, X, type LucideIcon } from 'lucide-react';
 import { t } from '../../i18n';
 import { toApiMessage } from '../../shared/lib/api-client';
+import { formatFaSize } from '../../shared/lib/format-fa';
 import { useToast } from '../../shared/ui/Toast';
 import { Button } from '../../shared/ui/Button';
+import { EmptyState, Skeleton } from '../../shared/ui/Feedback';
 import { downloadAttachmentBlob } from './api';
 import { useAttachments, useDetachAttachment, useUploadAttachment } from './hooks';
 
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+function fileIcon(mime: string): LucideIcon {
+  if (mime.startsWith('image/')) return FileImage;
+  if (/sheet|excel|csv/.test(mime)) return FileSpreadsheet;
+  if (/zip|rar|7z|tar|gzip/.test(mime)) return FileArchive;
+  return FileText;
 }
 
 export function AttachmentsCard({
@@ -69,15 +72,20 @@ export function AttachmentsCard({
     }
   }
 
+  const items = list.data ?? [];
+
   return (
     <section className="surface overflow-hidden" aria-label={t('document.title')}>
-      <div className="hairline-b flex items-center gap-2 px-5 py-3.5">
-        <Paperclip size={16} className="text-slate-400" />
-        <h2 className="section-title">{t('document.title')}</h2>
+      <div className="panel-head justify-between">
+        <div className="flex min-w-0 items-center gap-2">
+          <Paperclip size={16} className="shrink-0 text-ink-3" aria-hidden />
+          <h2 className="section-title">{t('document.title')}</h2>
+          {items.length > 0 && <span className="meta tabular-nums">({t('document.countLabel', { count: items.length })})</span>}
+        </div>
         {canWrite && (
           <>
             <input ref={inputRef} type="file" className="hidden" onChange={(e) => void onPick(e.target.files?.[0])} aria-hidden tabIndex={-1} />
-            <Button variant="secondary" size="sm" disabled={upload.isPending} onClick={() => inputRef.current?.click()} className="ms-auto">
+            <Button variant="secondary" size="sm" disabled={upload.isPending} onClick={() => inputRef.current?.click()}>
               <Plus size={15} />
               {upload.isPending ? t('common.loading') : t('document.upload')}
             </Button>
@@ -85,34 +93,60 @@ export function AttachmentsCard({
         )}
       </div>
 
-      {list.isPending && <p className="px-5 py-4 text-sm text-slate-500">{t('common.loading')}</p>}
-      {list.isError && <p className="px-5 py-4 text-sm text-rose-600">{toApiMessage(list.error, t('common.error'))}</p>}
-      {list.data && list.data.length === 0 && (
-        <p className="meta px-5 py-4">{t('document.empty')}</p>
+      {list.isPending && (
+        <div className="space-y-3 p-5">
+          <Skeleton className="h-10" />
+          <Skeleton className="h-10" />
+        </div>
+      )}
+      {list.isError && <p className="px-5 py-4 text-[13px] text-danger">{toApiMessage(list.error, t('common.error'))}</p>}
+      {list.data && items.length === 0 && (
+        <EmptyState icon={Paperclip} title={t('document.empty')} hint={canWrite ? t('document.emptyHint') : undefined} className="py-10" />
       )}
 
-      {list.data && list.data.length > 0 && (
-        <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-          {list.data.map((d) => (
-            <li key={d.id} className="flex items-center gap-3 px-5 py-3">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-control bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                <FileText size={16} />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">{d.filename}</p>
-                <p className="meta" dir="ltr">{d.mime} · {formatSize(d.sizeBytes)}</p>
-              </div>
-              <Button variant="ghost" size="sm" disabled={busyId === d.id} onClick={() => void onDownload(d.id, d.filename)}>
-                <Download size={15} />
-                {t('document.download')}
-              </Button>
-              {canWrite && (
-                <Button variant="ghost" size="icon-sm" disabled={detach.isPending} onClick={() => void onDetach(d.id)} aria-label={t('document.detach')} title={t('document.detach')} className="hover:text-rose-600 dark:hover:text-rose-400">
-                  <X size={15} />
+      {items.length > 0 && (
+        <ul className="divide-y divide-line">
+          {items.map((d) => {
+            const Icon = fileIcon(d.mime);
+            return (
+              <li key={d.id} className="flex items-center gap-3 px-5 py-3">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-control bg-surface-sunken text-ink-3">
+                  <Icon size={16} strokeWidth={1.75} aria-hidden />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p dir="auto" className="truncate text-[13.5px] font-medium">
+                    {d.filename}
+                  </p>
+                  <p className="meta truncate text-[12px]" dir="ltr">
+                    {formatFaSize(d.sizeBytes)} · {d.mime}
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  disabled={busyId === d.id}
+                  onClick={() => void onDownload(d.id, d.filename)}
+                  aria-label={t('document.download')}
+                  title={t('document.download')}
+                >
+                  <Download size={15} />
                 </Button>
-              )}
-            </li>
-          ))}
+                {canWrite && (
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    disabled={detach.isPending}
+                    onClick={() => void onDetach(d.id)}
+                    aria-label={t('document.detach')}
+                    title={t('document.detach')}
+                    className="hover:text-danger"
+                  >
+                    <X size={15} />
+                  </Button>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
     </section>

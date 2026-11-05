@@ -1,7 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { Link, useNavigate } from 'react-router-dom';
-import { UserPlus } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { t } from '../i18n';
 import { toApiMessage } from '../shared/lib/api-client';
 import { Button } from '../shared/ui/Button';
@@ -27,11 +27,14 @@ export function RegisterPage(): JSX.Element {
       subtitle={t('auth.registerHint')}
       footer={
         <>
-          {t('auth.hasAccount')} <Link to="/login" className="font-semibold text-brand-700 hover:underline dark:text-brand-200">{t('auth.login')}</Link>
+          {t('auth.hasAccount')}{' '}
+          <Link to="/login" className="font-semibold text-accent hover:underline">
+            {t('auth.login')}
+          </Link>
         </>
       }
     >
-      <form onSubmit={(e) => void form.handleSubmit(onSubmit)(e)} className="space-y-4" noValidate>
+      <form onSubmit={(e) => void form.handleSubmit(onSubmit)(e)} className="space-y-5" noValidate>
         <Field label={t('auth.fullName')} error={errors.fullName?.message}>
           <TextInput autoComplete="name" {...form.register('fullName')} aria-invalid={!!errors.fullName} />
         </Field>
@@ -41,7 +44,7 @@ export function RegisterPage(): JSX.Element {
         <Field label={t('auth.organizationName')} error={errors.organizationName?.message}>
           <TextInput autoComplete="organization" {...form.register('organizationName')} aria-invalid={!!errors.organizationName} />
         </Field>
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-5 sm:grid-cols-2">
           <Field label={t('auth.password')} error={errors.password?.message}>
             <TextInput type="password" dir="ltr" autoComplete="new-password" {...form.register('password')} aria-invalid={!!errors.password} />
           </Field>
@@ -50,11 +53,13 @@ export function RegisterPage(): JSX.Element {
           </Field>
         </div>
         {mutation.isError && (
-          <p className="form-error" role="alert">{toApiMessage(mutation.error, t('common.error'))}</p>
+          <p className="form-error" role="alert">
+            {toApiMessage(mutation.error, t('common.error'))}
+          </p>
         )}
-        <Button type="submit" variant="primary" disabled={mutation.isPending} className="w-full">
-          <UserPlus size={16} />
+        <Button type="submit" variant="primary" disabled={mutation.isPending} className="h-11 w-full text-[14.5px]">
           {mutation.isPending ? t('common.loading') : t('auth.registerSubmit')}
+          {!mutation.isPending && <ArrowLeft size={16} className="ltr:rotate-180" aria-hidden />}
         </Button>
       </form>
     </AuthLayout>

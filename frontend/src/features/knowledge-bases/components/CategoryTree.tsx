@@ -4,8 +4,9 @@ import { t } from '../../../i18n';
 import { toApiMessage } from '../../../shared/lib/api-client';
 import { useToast } from '../../../shared/ui/Toast';
 import { Button } from '../../../shared/ui/Button';
-import { ConfirmDialog, Dialog } from '../../../shared/ui/Dialog';
+import { ConfirmDialog, Dialog, DialogFooter } from '../../../shared/ui/Dialog';
 import { Field, Select, TextInput } from '../../../shared/ui/Field';
+import { EmptyState } from '../../../shared/ui/Feedback';
 import { useCreateCategory, useDeleteCategory, useUpdateCategory } from '../hooks';
 import type { CategoryNode } from '../api';
 
@@ -90,21 +91,23 @@ export function CategoryTree({ kbId, nodes, canManage }: Props): JSX.Element {
     return list.map((n) => (
       <li key={n.id}>
         <div
-          className="group flex items-center gap-2 rounded-control px-2.5 py-2 text-sm transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50"
-          style={{ marginInlineStart: depth * 20 }}
+          className="group flex items-center gap-2.5 rounded-control px-3 py-2 text-[14px] transition-colors hover:bg-surface-muted"
+          style={{ marginInlineStart: depth * 22 }}
         >
-          <Folder size={15} className="shrink-0 text-slate-400" />
-          <span className="truncate font-medium">{n.title}</span>
-          <span dir="ltr" className="truncate text-xs text-slate-400">{n.path}</span>
+          <Folder size={16} className="shrink-0 text-accent" aria-hidden />
+          <span className="min-w-0 truncate font-semibold">{n.title}</span>
+          <span dir="ltr" className="hidden min-w-0 truncate font-mono text-[12px] text-ink-4 sm:block">
+            {n.path}
+          </span>
           {canManage && (
             <span className="ms-auto flex shrink-0 gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
               <Button variant="ghost" size="icon-sm" onClick={() => openAdd(n.id)} title={t('kb.addChild')} aria-label={t('kb.addChild')}>
-                <FolderPlus size={14} />
+                <FolderPlus size={15} />
               </Button>
               <Button variant="ghost" size="icon-sm" onClick={() => openEdit(n)} title={t('common.edit')} aria-label={t('common.edit')}>
                 <Pencil size={14} />
               </Button>
-              <Button variant="ghost" size="icon-sm" onClick={() => setDeleting(n)} title={t('kb.delete')} aria-label={t('kb.delete')} className="hover:text-rose-600 dark:hover:text-rose-400">
+              <Button variant="ghost" size="icon-sm" onClick={() => setDeleting(n)} title={t('kb.delete')} aria-label={t('kb.delete')} className="hover:text-danger">
                 <Trash2 size={14} />
               </Button>
             </span>
@@ -119,15 +122,17 @@ export function CategoryTree({ kbId, nodes, canManage }: Props): JSX.Element {
   const parentOptions = all.filter((c) => !editing || (c.id !== editing.id && !c.path.startsWith(`${editing.path}/`)));
 
   return (
-    <div>
+    <div className="space-y-4">
       {canManage && (
-        <Button variant="secondary" size="sm" onClick={() => openAdd(null)} className="mb-3">
-          <Plus size={15} />
-          {t('kb.addCategory')}
-        </Button>
+        <div className="flex justify-end">
+          <Button variant="secondary" size="sm" onClick={() => openAdd(null)}>
+            <Plus size={15} />
+            {t('kb.addCategory')}
+          </Button>
+        </div>
       )}
-      {nodes.length === 0 && <p className="meta">{t('common.empty')}</p>}
-      <ul className="space-y-0.5">{renderNodes(nodes, 0)}</ul>
+      {nodes.length === 0 && <EmptyState icon={Folder} title={t('kb.noCategories')} hint={t('kb.noCategoriesHint')} className="py-8" />}
+      {nodes.length > 0 && <ul className="space-y-0.5">{renderNodes(nodes, 0)}</ul>}
 
       <Dialog
         open={showForm}
@@ -137,8 +142,8 @@ export function CategoryTree({ kbId, nodes, canManage }: Props): JSX.Element {
           setEditing(null);
         }}
       >
-        <form onSubmit={(e) => void submit(e)} className="space-y-4" noValidate>
-          <div className="grid gap-4 sm:grid-cols-2">
+        <form onSubmit={(e) => void submit(e)} className="space-y-5" noValidate>
+          <div className="grid gap-5 sm:grid-cols-2">
             <Field label={t('kb.categoryTitle')}>
               <TextInput value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required />
             </Field>
@@ -161,7 +166,7 @@ export function CategoryTree({ kbId, nodes, canManage }: Props): JSX.Element {
           {(create.isError || update.isError) && (
             <p className="form-error">{toApiMessage(create.error ?? update.error, t('common.error'))}</p>
           )}
-          <div className="flex justify-end gap-2">
+          <DialogFooter>
             <Button
               variant="ghost"
               onClick={() => {
@@ -174,7 +179,7 @@ export function CategoryTree({ kbId, nodes, canManage }: Props): JSX.Element {
             <Button type="submit" variant="primary" disabled={create.isPending || update.isPending}>
               {t('common.save')}
             </Button>
-          </div>
+          </DialogFooter>
         </form>
       </Dialog>
 

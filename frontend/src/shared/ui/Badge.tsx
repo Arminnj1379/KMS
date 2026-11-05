@@ -1,16 +1,17 @@
 import { cn } from '../lib/cn';
 
-type Tone = 'blue' | 'green' | 'amber' | 'rose' | 'slate';
+export type Tone = 'accent' | 'success' | 'warn' | 'danger' | 'neutral' | 'outline';
 
 const tones: Record<Tone, string> = {
-  blue: 'badge-blue',
-  green: 'badge-green',
-  amber: 'badge-amber',
-  rose: 'badge-rose',
-  slate: 'badge-slate',
+  accent: 'badge-accent',
+  success: 'badge-success',
+  warn: 'badge-warn',
+  danger: 'badge-danger',
+  neutral: 'badge-neutral',
+  outline: 'badge-outline',
 };
 
-export function Badge({ tone = 'slate', dot = true, className, children }: {
+export function Badge({ tone = 'neutral', dot = false, className, children }: {
   tone?: Tone;
   dot?: boolean;
   className?: string;

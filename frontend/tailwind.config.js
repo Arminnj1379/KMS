@@ -1,37 +1,50 @@
 /** @type {import('tailwindcss').Config} */
+const token = (name) => `rgb(var(--${name}) / <alpha-value>)`;
+
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   darkMode: 'class',
   theme: {
     extend: {
       fontFamily: {
-        sans: ['Vazirmatn', 'Tahoma', 'system-ui', 'sans-serif'],
+        sans: ['"Vazirmatn Variable"', 'Vazirmatn', 'Tahoma', 'system-ui', 'sans-serif'],
+        mono: ['ui-monospace', 'Consolas', 'monospace'],
       },
       colors: {
-        brand: {
-          50: '#eef2fe',
-          100: '#dce4fd',
-          200: '#bccdfb',
-          300: '#8fadF8',
-          400: '#5d81f2',
-          500: '#2e5bee',
-          600: '#2449c4',
-          700: '#1d3b9e',
-          800: '#1c357e',
-          900: '#1b3168',
-          950: '#152452',
+        canvas: token('canvas'),
+        surface: {
+          DEFAULT: token('surface'),
+          muted: token('surface-muted'),
+          sunken: token('surface-sunken'),
         },
-        paper: {
-          DEFAULT: '#f4f4f2',
-          dark: '#0e1116',
+        ink: {
+          DEFAULT: token('ink'),
+          2: token('ink-2'),
+          3: token('ink-3'),
+          4: token('ink-4'),
         },
+        line: {
+          DEFAULT: token('line'),
+          strong: token('line-strong'),
+        },
+        accent: {
+          DEFAULT: token('accent'),
+          hover: token('accent-hover'),
+          soft: token('accent-soft'),
+          fg: token('on-accent'),
+        },
+        warn: { DEFAULT: token('warn'), soft: token('warn-soft') },
+        danger: { DEFAULT: token('danger'), soft: token('danger-soft') },
+        success: { DEFAULT: token('success'), soft: token('success-soft') },
+        'on-danger': token('on-danger'),
+        overlay: token('overlay'),
       },
       boxShadow: {
-        pop: '0 8px 28px -8px rgb(24 27 32 / 0.18), 0 2px 6px -2px rgb(24 27 32 / 0.08)',
-        lift: '0 2px 10px -2px rgb(24 27 32 / 0.10)',
+        pop: '0 16px 40px -16px rgb(15 22 21 / 0.28), 0 2px 8px -2px rgb(15 22 21 / 0.10)',
+        lift: '0 1px 2px rgb(15 22 21 / 0.06), 0 1px 1px rgb(15 22 21 / 0.04)',
       },
       borderRadius: {
-        card: '0.625rem',
+        card: '0.75rem',
         control: '0.5rem',
       },
       keyframes: {
@@ -44,11 +57,8 @@ export default {
           to: { opacity: '1', transform: 'translateY(0)' },
         },
         'toast-in': {
-          from: { opacity: '0', transform: 'translateY(8px) scale(0.98)' },
-          to: { opacity: '1', transform: 'translateY(0) scale(1)' },
-        },
-        shimmer: {
-          '100%': { transform: 'translateX(100%)' },
+          from: { opacity: '0', transform: 'translateY(8px)' },
+          to: { opacity: '1', transform: 'translateY(0)' },
         },
       },
       animation: {

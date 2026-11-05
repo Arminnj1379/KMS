@@ -1,51 +1,70 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { FileText, Plus, Search, Trash2 } from 'lucide-react';
 import { t } from '../i18n';
 import { toApiMessage } from '../shared/lib/api-client';
+import { formatFaDate, formatFaNumber, formatFaRelative } from '../shared/lib/format-fa';
 import { useToast } from '../shared/ui/Toast';
-import { PageHeader } from '../shared/ui/Chrome';import { Button } from '../shared/ui/Button';
+import { PageHeader } from '../shared/ui/Chrome';
+import { Button } from '../shared/ui/Button';
 import { ConfirmDialog } from '../shared/ui/Dialog';
 import { Select, TextInput } from '../shared/ui/Field';
-import { Badge, TagChip } from '../shared/ui/Badge';
+import { TagChip } from '../shared/ui/Badge';
 import { EmptyState, InlineError, Skeleton } from '../shared/ui/Feedback';
+import { Pager } from '../shared/ui/Pager';
+import { Segmented } from '../shared/ui/Segmented';
 import { useKb } from '../features/knowledge-bases/hooks';
 import { useArticles, useDeleteArticle, useKbTags } from '../features/articles/hooks';
-import { formatFaDate, formatFaNumber } from '../shared/lib/format-fa';
+import { ArticleStatusBadge, articleStatusLabel } from '../features/articles/components/ArticleStatusBadge';
 
-const STATUS_OPTIONS = ['', 'draft', 'in_review', 'published', 'archived'];
-
-const statusTone = { draft: 'slate', in_review: 'amber', published: 'green', archived: 'blue' } as const;
+const STATUSES = ['', 'draft', 'in_review', 'published', 'archived'] as const;
+const PAGE_SIZE = 20;
 
 export function ArticleListPage(): JSX.Element {
   const { kbId = '' } = useParams();
   const toast = useToast();
   const kb = useKb(kbId);
-  const [status, setStatus] = useState('');
+  const [status, setStatus] = useState<string>('');
   const [search, setSearch] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
   const [tag, setTag] = useState('');
+  const [page, setPage] = useState(1);
   const list = useArticles(kbId, {
     ...(status ? { status } : {}),
     ...(appliedSearch ? { search: appliedSearch } : {}),
     ...(tag ? { tag } : {}),
     sort: 'newest',
-    pageSize: 20,
+    page,
+    pageSize: PAGE_SIZE,
   });
   const tags = useKbTags(kbId);
   const del = useDeleteArticle(kbId);
   const [deleting, setDeleting] = useState<{ id: string; title: string } | null>(null);
 
+  useEffect(() => {
+    const id = setTimeout(() => {
+      setAppliedSearch(search.trim());
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(id);
+  }, [search]);
+
   const role = kb.data?.role ?? null;
   const canWrite = role === 'manager' || role === 'contributor' || role === 'org-admin';
   const canManage = role === 'manager' || role === 'org-admin';
+  const total = list.data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const filtered = status !== '' || appliedSearch !== '' || tag !== '';
 
-  const statusLabel: Record<string, string> = {
-    draft: t('article.status_draft'),
-    in_review: t('article.status_in_review'),
-    published: t('article.status_published'),
-    archived: t('article.status_archived'),
-  };
+  function changeStatus(next: string): void {
+    setStatus(next);
+    setPage(1);
+  }
+
+  function changeTag(next: string): void {
+    setTag(next);
+    setPage(1);
+  }
 
   async function onDelete(): Promise<void> {
     if (!deleting) return;
@@ -59,129 +78,151 @@ export function ArticleListPage(): JSX.Element {
   }
 
   return (
-    <section className="mx-auto max-w-4xl space-y-5">
+    <div className="space-y-6">
       <PageHeader
         title={t('article.listTitle')}
-        description={kb.data?.title}
+        description={list.data ? t('article.listCount', { count: formatFaNumber(total) }) : undefined}
         breadcrumbs={[
           { label: t('nav.knowledgeBases'), to: '/kbs' },
           ...(kb.data ? [{ label: kb.data.title, to: `/kbs/${kbId}` }] : []),
-          { label: t('article.listTitle') },
         ]}
         actions={
           canWrite ? (
-            <Link to={`/kbs/${kbId}/articles/new`} className="btn-primary btn-sm">
-              <Plus size={15} />
+            <Link to={`/kbs/${kbId}/articles/new`} className="btn-primary">
+              <Plus size={16} />
               {t('article.create')}
             </Link>
           ) : undefined
         }
       />
 
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          setAppliedSearch(search);
-        }}
-        className="surface flex flex-wrap items-center gap-2 p-3"
-        role="search"
-      >
-        <div className="relative min-w-0 flex-1 basis-48">
-          <Search size={15} className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <TextInput
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={t('article.searchPh')}
-            aria-label={t('article.searchPh')}
-            className="ps-9"
-          />
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+        <Segmented
+          label={t('article.allStatuses')}
+          value={status}
+          onChange={changeStatus}
+          options={STATUSES.map((s) => ({ value: s, label: s === '' ? t('article.allStatuses') : articleStatusLabel(s) }))}
+        />
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <div className="relative min-w-0 sm:w-64">
+            <Search size={16} className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-ink-4" aria-hidden />
+            <TextInput
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={t('article.searchPh')}
+              aria-label={t('article.searchPh')}
+              className="ps-9"
+            />
+          </div>
+          <Select value={tag} onChange={(e) => changeTag(e.target.value)} className="sm:w-48" aria-label={t('article.allTags')}>
+            <option value="">{t('article.allTags')}</option>
+            {(tags.data ?? []).map((tg) => (
+              <option key={tg.id} value={tg.slug}>
+                {tg.name} ({formatFaNumber(tg.articleCount)})
+              </option>
+            ))}
+          </Select>
         </div>
-        <Select value={status} onChange={(e) => setStatus(e.target.value)} className="w-auto" aria-label={t('article.allStatuses')}>
-          {STATUS_OPTIONS.map((s) => (
-            <option key={s} value={s}>
-              {s === '' ? t('article.allStatuses') : (statusLabel[s] ?? s)}
-            </option>
-          ))}
-        </Select>
-        <Select value={tag} onChange={(e) => setTag(e.target.value)} className="w-auto" aria-label={t('article.allTags')}>
-          <option value="">{t('article.allTags')}</option>
-          {(tags.data ?? []).map((tg) => (
-            <option key={tg.id} value={tg.slug}>
-              {tg.name} ({formatFaNumber(tg.articleCount)})
-            </option>
-          ))}
-        </Select>
-        <Button type="submit" variant="secondary" size="sm">
-          {t('article.searchBtn')}
-        </Button>
-      </form>
+      </div>
 
       {list.isPending && (
-        <div className="space-y-2.5">
-          <Skeleton className="h-20" />
-          <Skeleton className="h-20" />
-          <Skeleton className="h-20" />
-        </div>
+        <section className="surface divide-y divide-line overflow-hidden" aria-label={t('common.loading')}>
+          <div className="space-y-3 p-5">
+            <Skeleton className="h-10" />
+            <Skeleton className="h-10" />
+            <Skeleton className="h-10" />
+          </div>
+        </section>
       )}
       {list.isError && <InlineError message={toApiMessage(list.error, t('common.error'))} onRetry={() => void list.refetch()} />}
+
       {list.data && list.data.items.length === 0 && (
-        <div className="surface">
-          <EmptyState
-            icon={FileText}
-            title={t('article.emptyTitle')}
-            hint={t('article.emptyHint')}
-            action={
-              canWrite ? (
-                <Link to={`/kbs/${kbId}/articles/new`} className="btn-primary btn-sm">
-                  <Plus size={15} />
-                  {t('article.create')}
-                </Link>
-              ) : undefined
-            }
-          />
-        </div>
-      )}
-      {list.data && list.data.items.length > 0 && (
-        <ul className="surface divide-y overflow-hidden" style={{ borderColor: 'var(--line)' }}>
-          {list.data.items.map((a) => (
-            <li key={a.id} className="group flex items-start gap-3 px-5 py-4 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/40">
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Link to={`/kbs/${kbId}/articles/${a.slug}`} className="truncate text-[15px] font-bold hover:text-brand-700 dark:hover:text-brand-200">
-                    {a.title}
+        <section className="surface">
+          {filtered ? (
+            <EmptyState icon={Search} title={t('article.emptyFilteredTitle')} hint={t('article.emptyFilteredHint')} />
+          ) : (
+            <EmptyState
+              icon={FileText}
+              title={t('article.emptyTitle')}
+              hint={t('article.emptyHint')}
+              action={
+                canWrite ? (
+                  <Link to={`/kbs/${kbId}/articles/new`} className="btn-primary">
+                    <Plus size={16} />
+                    {t('article.create')}
                   </Link>
-                  <Badge tone={statusTone[a.status as keyof typeof statusTone] ?? 'slate'}>
-                    {statusLabel[a.status] ?? a.status}
-                  </Badge>
-                </div>
-                {a.summary && <p className="mt-1 line-clamp-2 text-[13px] leading-6 text-slate-500 dark:text-slate-400">{a.summary}</p>}
-                <p className="meta mt-1.5">
-                  {t('article.versionLabel', { version: formatFaNumber(a.version) })} · {formatFaDate(a.updatedAt)}
-                </p>
-                {a.tagNames.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {a.tagNames.map((tagName) => (
-                      <TagChip key={tagName}>{tagName}</TagChip>
-                    ))}
-                  </div>
-                )}
-              </div>
-              {canManage && (
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className="shrink-0 text-slate-400 opacity-0 hover:text-rose-600 focus:opacity-100 group-hover:opacity-100 dark:hover:text-rose-400"
-                  onClick={() => setDeleting({ id: a.id, title: a.title })}
-                  aria-label={t('kb.delete')}
-                  title={t('kb.delete')}
-                >
-                  <Trash2 size={15} />
-                </Button>
-              )}
-            </li>
-          ))}
-        </ul>
+                ) : undefined
+              }
+            />
+          )}
+        </section>
       )}
+
+      {list.data && list.data.items.length > 0 && (
+        <section className="surface overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="tbl min-w-[760px]">
+              <thead>
+                <tr>
+                  <th>{t('article.colTitle')}</th>
+                  <th>{t('article.colStatus')}</th>
+                  <th>{t('article.colVersion')}</th>
+                  <th>{t('article.colTags')}</th>
+                  <th>{t('article.colUpdated')}</th>
+                  <th>
+                    <span className="sr-only">{t('kb.delete')}</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {list.data.items.map((a) => (
+                  <tr key={a.id}>
+                    <td className="max-w-md">
+                      <Link to={`/kbs/${kbId}/articles/${a.slug}`} dir="auto" className="block truncate font-semibold hover:text-accent">
+                        {a.title}
+                      </Link>
+                      {a.summary && <span dir="auto" className="meta mt-0.5 block truncate">{a.summary}</span>}
+                    </td>
+                    <td>
+                      <ArticleStatusBadge status={a.status} />
+                    </td>
+                    <td className="tabular-nums text-ink-3">{formatFaNumber(a.version)}</td>
+                    <td>
+                      <div className="flex flex-wrap gap-1.5">
+                        {a.tagNames.slice(0, 3).map((name) => (
+                          <TagChip key={name}>{name}</TagChip>
+                        ))}
+                        {a.tagNames.length > 3 && <span className="meta">+{formatFaNumber(a.tagNames.length - 3)}</span>}
+                      </div>
+                    </td>
+                    <td className="whitespace-nowrap text-ink-3" title={formatFaDate(a.updatedAt)}>
+                      {formatFaRelative(a.updatedAt)}
+                    </td>
+                    <td className="text-end">
+                      {canManage && (
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className="text-ink-4 hover:text-danger"
+                          onClick={() => setDeleting({ id: a.id, title: a.title })}
+                          aria-label={t('kb.delete')}
+                          title={t('kb.delete')}
+                        >
+                          <Trash2 size={15} />
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      <Pager page={page} totalPages={totalPages} onPage={setPage} />
+
       <ConfirmDialog
         open={deleting !== null}
         title={t('kb.delete')}
@@ -192,6 +233,6 @@ export function ArticleListPage(): JSX.Element {
         onClose={() => setDeleting(null)}
         onConfirm={() => void onDelete()}
       />
-    </section>
+    </div>
   );
 }
