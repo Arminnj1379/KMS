@@ -30,6 +30,100 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/** Arabic-Indic letters writers mix with Persian ones; map to Persian. */
+function unifyPersianChars(value: string): string {
+  return value
+    .replace(/[ي]/g, 'ی')
+    .replace(/[ك]/g, 'ک')
+    .replace(/ة/g, 'ه')
+    .replace(/ـ/g, '')
+    .replace(/[\u064B-\u0652]/g, '');
+}
+
+const PERSIAN_LETTER = /[\u0600-\u06FF]/;
+
+/** Common Persian suffixes, longest-first (possessives, plurals, comparatives, verb endings, ezāfe-ی). */
+const PERSIAN_SUFFIXES = [
+  'ترین',
+  'های',
+  'ها',
+  'تر',
+  'مان',
+  'تان',
+  'شان',
+  'ایم',
+  'اید',
+  'اند',
+  'ان',
+  'ات',
+  'ون',
+  'ین',
+  'ام',
+  'ای',
+  'اش',
+  'م',
+  'ت',
+  'ش',
+  'ی',
+];
+
+/** Relative-ی joins vowel-final stems directly (راهنما+ی); suffix-ای follows a separator (خانه‌+ای). */
+const VOWEL_PLUS_YA = /[اوی]ی$/u;
+
+/** Strips one suffix layer; longer affixes may chain, single-char ones fire once. */
+export function stemPersianToken(token: string): string {
+  let stem = token;
+  // Pass 1: relative-ی after a vowel (no ZWNJ between), else longest match.
+  let first: string | undefined;
+  if (
+    VOWEL_PLUS_YA.test(stem) &&
+    !/[‌\s]/u.test(stem.slice(-3, -2)) &&
+    stem.length - 1 >= 3
+  ) {
+    first = 'ی';
+  } else {
+    first = PERSIAN_SUFFIXES.find((s) => stem.length - s.length >= 3 && stem.endsWith(s));
+  }
+  if (!first) return stem;
+  stem = stem.slice(0, -first.length).replace(/[‌\s]+$/u, '');
+  // Passes 2–3: multi-char suffixes only — a second single-char strip would
+  // eat roots (راهنما → راهن via possessive-م), so it is never chained.
+  for (let i = 0; i < 2; i++) {
+    const next = PERSIAN_SUFFIXES.find(
+      (s) => s.length >= 2 && stem.length - s.length >= 3 && stem.endsWith(s),
+    );
+    if (!next) break;
+    stem = stem.slice(0, -next.length).replace(/[‌\s]+$/u, '');
+    if (!PERSIAN_LETTER.test(stem)) break;
+  }
+  return stem;
+}
+
+/**
+ * Query variants for the regex fallback (Phase 10): the raw token plus
+ * orthographic/stemmed forms, so affixed Persian queries still recall
+ * ("راهنمای" → "راهنما"، "کتاب‌ها" → "کتاب"، "می‌شود" → "میشود").
+ * The `$text` path is untouched — this only widens the fallback.
+ */
+export function searchVariants(q: string): string[] {
+  const raw = q.trim();
+  if (!raw) return [];
+  const out: string[] = [raw];
+  const push = (v: string): void => {
+    const t = v.trim();
+    if (t && t.length >= 2 && !out.includes(t)) out.push(t);
+  };
+  const unified = unifyPersianChars(raw);
+  push(unified);
+  push(unified.replace(/\u200C/g, ''));
+  push(unified.replace(/\u200C/g, ' '));
+  const stemmed = stemPersianToken(unified);
+  push(stemmed);
+  const stemmedPlain = stemPersianToken(unified.replace(/\u200C/g, ''));
+  push(stemmedPlain);
+  return out.slice(0, 5);
+}
+
 /** Recursively extracts plain text from a Tiptap JSON doc (server-side fallback). */
 export function extractTextFromTiptap(node: unknown): string {
   if (node === null || node === undefined) return '';
@@ -717,8 +811,9 @@ export class ArticlesService {
    * Strategy (ARCHITECTURE §9): MongoDB `$text` (index `article_text`,
    * `language_override: none` — Persian has no stemmer) ordered by
    * `$meta: textScore`; when `$text` yields nothing (partial tokens,
-   * stop-words-only, or operator syntax errors) fall back to a
-   * case-insensitive regex over title/summary/contentText.
+   * stop-words-only, or operator syntax errors) fall back to
+   * case-insensitive regexes over title/summary/contentText, widened with
+   * `searchVariants` (orthographic + stemmed forms) for Persian affixes.
    * Exported for the search module (direction: search → articles → kbs).
    */
   async globalSearch(
@@ -796,9 +891,15 @@ export class ArticlesService {
       }
     }
 
-    // 2) Partial-token fallback — substring match for Persian affixes etc.
-    const rx = new RegExp(escapeRegExp(q), 'i');
-    const regexFilter = { ...base, $or: [{ title: rx }, { summary: rx }, { contentText: rx }] };
+    // 2) Affix-tolerant fallback — substring match over the raw query plus
+    // orthographic/stemmed variants (Phase 10: "راهنمای" recalls "راهنما").
+    // $text stays the exact-match relevance path; this only widens the miss.
+    const variants = searchVariants(q);
+    const clauses = variants.flatMap((v) => {
+      const rx = new RegExp(escapeRegExp(v), 'i');
+      return [{ title: rx }, { summary: rx }, { contentText: rx }];
+    });
+    const regexFilter = { ...base, $or: clauses };
     const [total, rows] = await Promise.all([
       this.articleModel.countDocuments(regexFilter),
       this.articleModel

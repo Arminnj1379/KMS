@@ -5,7 +5,7 @@ import type { Article } from '../../common/mongo/schemas/article.schema';
 import type { ArticleVersion } from '../../common/mongo/schemas/article-version.schema';
 import type { Category } from '../../common/mongo/schemas/category.schema';
 import type { Tag } from '../../common/mongo/schemas/tag.schema';
-import { ArticlesService } from '../articles/articles.service';
+import { ArticlesService, searchVariants, stemPersianToken } from '../articles/articles.service';
 import type { KnowledgeBasesService } from '../knowledge-bases/knowledge-bases.service';
 import { SearchService } from './search.service';
 
@@ -202,5 +202,51 @@ describe('SearchService (Mongo provider)', () => {
     await d.search.search(ORG, ALI, 'member', { q: 'راهنما', status: 'published' } as never);
     const filter = d.articles.find.mock.calls[0][0] as Record<string, unknown>;
     expect(filter['status']).toBe('published');
+  });
+
+  it('affixed Persian query falls back with stemmed variants', async () => {
+    const d = makeDeps();
+    d.articles.countDocuments.mockResolvedValueOnce(0).mockResolvedValueOnce(1);
+    d.articles.find.mockReturnValueOnce(q([])).mockReturnValueOnce(q([articleDoc()]));
+    d.tags.find.mockReturnValue(q([]));
+    const res = await d.search.search(ORG, ALI, 'member', { q: 'راهنمای' } as never);
+    expect(res.mode).toBe('regex');
+    expect(res.total).toBe(1);
+    const filter = d.articles.find.mock.calls[1][0] as Record<string, unknown>;
+    const ors = filter['$or'] as { title?: RegExp; summary?: RegExp; contentText?: RegExp }[];
+    expect(ors.length).toBeGreaterThan(3);
+    const sources = ors.flatMap((c) =>
+      [c.title, c.summary, c.contentText].filter(Boolean).map((r) => (r as RegExp).source),
+    );
+    // The stemmed form must be among the queried patterns.
+    expect(sources.some((s) => s.includes('راهنما'))).toBe(true);
+    expect(filter['$text']).toBeUndefined();
+  });
+});
+
+describe('searchVariants (Phase 10 Persian recall)', () => {
+  it('strips the relative-ی: راهنمای → راهنما', () => {
+    expect(searchVariants('راهنمای')).toContain('راهنما');
+  });
+
+  it('strips ZWNJ plurals: کتاب‌ها → کتاب', () => {
+    expect(searchVariants('کتاب‌ها')).toContain('کتاب');
+  });
+
+  it('never mangles short words: علی stays intact', () => {
+    expect(stemPersianToken('علی')).toBe('علی');
+    expect(searchVariants('علی')).toEqual(['علی']);
+  });
+
+  it('unifies Arabic chars and ZWNJ spellings', () => {
+    const variants = searchVariants('مي‌شود');
+    expect(variants).toContain('میشود');
+  });
+
+  it('caps variants at 5 and keeps raw first', () => {
+    const variants = searchVariants('راهنمای');
+    expect(variants[0]).toBe('راهنمای');
+    expect(variants.length).toBeLessThanOrEqual(5);
+    expect(new Set(variants).size).toBe(variants.length);
   });
 });

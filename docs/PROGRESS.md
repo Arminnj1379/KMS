@@ -2,7 +2,13 @@
 
 > Updated after every phase (see task §10). Legend: ✅ done · 🟡 partial · ⬜ not started · 🛑 blocked.
 
-## Current: all phases 0–9 ✅ complete (+ UI modernization) — system prod-ready per DEPLOYMENT.md
+## Current: all phases 0–10 ✅ complete (+ UI modernization) — system prod-ready per DEPLOYMENT.md
+
+## Phase 10 — Persian search recall (query-side, no migration) — completed 2026-11-05 ✅
+- `searchVariants` + `stemPersianToken` in `ArticlesService`: raw query first, then Arabic-char unification (ي/ك/ة, tatweel, diacritics), ZWNJ-joined/spaced forms, and a conservative stemmer (relative-ی after vowels incl. the ZWNJ rule, ZWNJ plurals, longest-match with single-char suffixes firing once so `راهنما` never degrades to `راهن`, length floor 3 so `علی` survives). Capped at 5 deduped variants → ≤15 escaped regex clauses.
+- The `$text` path is byte-identical; only the miss-fallback widens (`mode` stays `text`/`regex`, snippet still keyed on the raw query).
+- Verification (all green, executed 2026-11-05): unit **103/103** (6 new: variant generation ×5 — stem rules incl. the `ای`-vs-`ی` longest-match fix and the single-char chaining fix — plus a fallback `$or`-shape assert); `tsc` + `eslint` clean, `nest build` pass; live smoke `scripts/smoke-phase10-search.js` **8/8** (affixed `راهنمای` recalls the `راهنما` doc via `mode=regex`, exact still recalls, nonsense `زقزقیله‌ها` recalls nothing). Console Persian still renders as `?` in PS5.1 — assertions use slugs/modes/counts only.
+- Debt: stemmer is heuristic (e.g. genuinely ambiguous `ماهی` fish/lunar); true n-gram/Atlas index remains an option behind the same seam (D-026).
 
 | Phase | Status | Notes |
 |---|---|---|
@@ -17,6 +23,7 @@
 | 7 Search | ✅ | Backend: `GET /search` ($text + regex fallback, KB/org-scoped) + globalSearch façade. Frontend: search page + filters + pagination. |
 | 8 Notifications & Audit | ✅ | — |
 | 9 Polish & Prod-readiness | ✅ | Indexes EXPLAIN-reviewed (one gap fixed) + upload throttles + nginx hardening + DEPLOYMENT.md + polished seed + full suite green. See entry below. |
+| 10 Persian search recall | ✅ | Query-side `searchVariants` widen the regex fallback (relative-ی, ZWNJ plurals); `$text` untouched. See entry below. |
 | UI modernization (frontend-only redesign) | ✅ | See entry below — no API/backend changes. |
 
 ## Phase 9 — completed 2026-11-05 ✅
