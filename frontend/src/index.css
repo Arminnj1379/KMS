@@ -2,11 +2,304 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --surface: #ffffff;
+  --surface-2: #f8f8f6;
+  --ink: #181b20;
+  --ink-2: #3f4750;
+  --ink-3: #6b7480;
+  --line: #e5e5e1;
+  --line-strong: #d6d6d1;
+  --brand-ink: #2449c4;
+}
+
+.dark {
+  --surface: #151b23;
+  --surface-2: #0e1116;
+  --ink: #e8ebef;
+  --ink-2: #b7bfc9;
+  --ink-3: #8b94a1;
+  --line: #232b36;
+  --line-strong: #2f3844;
+  --brand-ink: #8fadf8;
+}
+
 @layer base {
   html {
     font-family: Vazirmatn, Tahoma, system-ui, sans-serif;
   }
   body {
-    @apply bg-slate-50 text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100;
+    @apply bg-paper text-slate-900 antialiased dark:bg-paper-dark dark:text-slate-100;
+    text-rendering: optimizeLegibility;
+  }
+  ::selection {
+    background: rgb(46 91 238 / 0.22);
+  }
+  :focus-visible {
+    outline: 2px solid rgb(46 91 238 / 0.65);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(120 130 140 / 0.45) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: rgb(120 130 140 / 0.45);
+    border-radius: 8px;
+  }
+}
+
+@layer components {
+  /* ---------- surfaces ---------- */
+  .surface {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 0.625rem;
+    color: var(--ink);
+  }
+  .surface-flat {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 0.625rem;
+  }
+  .hairline-b {
+    border-bottom: 1px solid var(--line);
+  }
+
+  /* ---------- buttons ---------- */
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-control px-3.5 py-2 text-sm font-semibold transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-55;
+    line-height: 1.5;
+  }
+  .btn-primary {
+    @apply btn bg-brand-600 text-white hover:bg-brand-700 active:bg-brand-800;
+  }
+  .btn-secondary {
+    @apply btn border text-slate-700 hover:bg-slate-100 active:bg-slate-200 dark:text-slate-200;
+    border-color: var(--line-strong);
+  }
+  .btn-ghost {
+    @apply btn text-slate-600 hover:bg-slate-200/60 active:bg-slate-200 dark:text-slate-300 dark:hover:bg-slate-800;
+  }
+  .btn-danger {
+    @apply btn border border-rose-300 text-rose-600 hover:bg-rose-50 active:bg-rose-100 dark:border-rose-900 dark:text-rose-300 dark:hover:bg-rose-950;
+  }
+  .btn-danger-solid {
+    @apply btn bg-rose-600 text-white hover:bg-rose-700 active:bg-rose-800;
+  }
+  .btn-sm {
+    @apply px-2.5 py-1 text-xs;
+  }
+  .btn-icon {
+    @apply inline-flex h-9 w-9 items-center justify-center rounded-control text-slate-500 transition-colors hover:bg-slate-200/60 hover:text-slate-800 active:bg-slate-200 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100;
+  }
+  .btn-icon-sm {
+    @apply inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-200/60 hover:text-slate-800 active:bg-slate-200 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100;
+  }
+
+  /* ---------- form controls ---------- */
+  .label {
+    @apply mb-1 block text-[13px] font-medium text-slate-600 dark:text-slate-300;
+  }
+  .input {
+    @apply w-full rounded-control border bg-white px-3 py-2 text-sm text-slate-900 transition-colors placeholder:text-slate-400 hover:border-slate-400 focus:border-brand-500 focus:outline-none dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500;
+    border-color: var(--line-strong);
+  }
+  .input-error {
+    @apply border-rose-400 focus:border-rose-500;
+  }
+  .field-error {
+    @apply mt-1 block text-xs text-rose-600 dark:text-rose-400;
+  }
+  .form-error {
+    @apply rounded-control border border-rose-200 bg-rose-50 px-3 py-2 text-[13px] text-rose-700 dark:border-rose-900 dark:bg-rose-950/60 dark:text-rose-300;
+  }
+  select.input {
+    @apply pe-8;
+  }
+
+  /* ---------- badges / status ---------- */
+  .badge {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+  .badge .dot {
+    @apply h-1.5 w-1.5 rounded-full bg-current;
+  }
+  .badge-blue {
+    @apply badge bg-brand-50 text-brand-700 dark:bg-brand-900/30 dark:text-brand-200;
+  }
+  .badge-green {
+    @apply badge bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300;
+  }
+  .badge-amber {
+    @apply badge bg-amber-50 text-amber-800 dark:bg-amber-950 dark:text-amber-300;
+  }
+  .badge-rose {
+    @apply badge bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300;
+  }
+  .badge-slate {
+    @apply badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300;
+  }
+  .tag-chip {
+    @apply inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300;
+  }
+
+  /* ---------- nav ---------- */
+  .navlink {
+    @apply flex items-center gap-2.5 rounded-control px-3 py-2 text-[13.5px] font-medium text-slate-600 transition-colors hover:bg-slate-200/60 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/70 dark:hover:text-slate-100;
+  }
+  .navlink-active {
+    @apply bg-brand-50 text-brand-700 hover:bg-brand-50 hover:text-brand-700 dark:bg-brand-900/25 dark:text-brand-200 dark:hover:bg-brand-900/25 dark:hover:text-brand-200;
+  }
+
+  /* ---------- content ---------- */
+  .page-title {
+    @apply text-[22px] font-bold leading-9 tracking-tight;
+  }
+  .page-desc {
+    @apply mt-0.5 text-[13px] text-slate-500 dark:text-slate-400;
+  }
+  .section-title {
+    @apply text-sm font-semibold;
+  }
+  .meta {
+    @apply text-xs text-slate-500 dark:text-slate-400;
+  }
+
+  /* ---------- tables ---------- */
+  .tbl {
+    @apply w-full text-sm;
+  }
+  .tbl thead th {
+    @apply border-b px-4 py-2.5 text-start text-xs font-medium text-slate-500 dark:text-slate-400;
+    border-color: var(--line);
+  }
+  .tbl tbody td {
+    @apply border-b px-4 py-2.5 align-middle last:border-0;
+    border-color: var(--line);
+  }
+  .tbl tbody tr {
+    @apply transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/40;
+  }
+
+  /* ---------- skeleton ---------- */
+  .skeleton {
+    @apply relative overflow-hidden rounded-md bg-slate-200/70 dark:bg-slate-800;
+  }
+  .skeleton::after {
+    content: '';
+    @apply absolute inset-0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.55), transparent);
+    animation: shimmer 1.4s infinite;
+  }
+  .dark .skeleton::after {
+    background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.08), transparent);
+  }
+
+  /* ---------- prose (article body) ---------- */
+  .kms-prose {
+    @apply text-[16.5px] leading-[2.1] text-slate-800 dark:text-slate-200;
+    overflow-wrap: break-word;
+  }
+  .kms-prose > *:first-child {
+    margin-top: 0;
+  }
+  .kms-prose p {
+    @apply my-4;
+  }
+  .kms-prose h1,
+  .kms-prose h2,
+  .kms-prose h3,
+  .kms-prose h4 {
+    @apply font-bold leading-relaxed text-slate-900 dark:text-slate-50;
+  }
+  .kms-prose h2 {
+    @apply mb-2 mt-8 text-xl;
+  }
+  .kms-prose h3 {
+    @apply mb-1 mt-6 text-lg;
+  }
+  .kms-prose h4 {
+    @apply mb-1 mt-5 text-base;
+  }
+  .kms-prose ul {
+    @apply my-4 space-y-1.5 pe-1;
+    list-style: disc inside;
+  }
+  .kms-prose ol {
+    @apply my-4 space-y-1.5 pe-1;
+    list-style: decimal inside;
+  }
+  .kms-prose li::marker {
+    @apply text-brand-600 dark:text-brand-300;
+  }
+  .kms-prose blockquote {
+    @apply my-5 rounded-control border-s-2 border-brand-400 bg-brand-50/60 px-4 py-2 text-slate-700 dark:bg-brand-900/15 dark:text-slate-300;
+  }
+  .kms-prose pre {
+    @apply my-5 overflow-x-auto rounded-control bg-slate-900 p-4 text-[13px] leading-7 text-slate-100 dark:bg-black/60;
+    direction: ltr;
+    text-align: left;
+  }
+  .kms-prose code {
+    @apply rounded bg-slate-200/70 px-1 py-0.5 text-[0.85em] text-slate-800 dark:bg-slate-800 dark:text-slate-200;
+  }
+  .kms-prose pre code {
+    @apply bg-transparent p-0 text-inherit;
+  }
+  .kms-prose hr {
+    @apply my-8 border-slate-200 dark:border-slate-800;
+  }
+  .kms-prose a {
+    @apply text-brand-700 underline decoration-brand-300 underline-offset-4 hover:decoration-brand-600 dark:text-brand-200;
+  }
+
+  /* ---------- editor ---------- */
+  .tiptap-wrap .ProseMirror {
+    @apply min-h-64 px-5 py-4 text-[15.5px] leading-[2] outline-none;
+  }
+  .tiptap-wrap .ProseMirror p {
+    @apply my-3;
+  }
+  .tiptap-wrap .ProseMirror h2 {
+    @apply mb-2 mt-6 text-xl font-bold;
+  }
+  .tiptap-wrap .ProseMirror h3 {
+    @apply mb-1 mt-5 text-lg font-bold;
+  }
+  .tiptap-wrap .ProseMirror ul {
+    list-style: disc inside;
+  }
+  .tiptap-wrap .ProseMirror ol {
+    list-style: decimal inside;
+  }
+  .tiptap-wrap .ProseMirror blockquote {
+    @apply rounded-control border-s-2 border-brand-400 bg-brand-50/60 px-4 py-1 dark:bg-brand-900/15;
+  }
+  .tiptap-wrap .ProseMirror pre {
+    @apply my-4 overflow-x-auto rounded-control bg-slate-900 p-4 text-[13px] leading-7 text-slate-100;
+    direction: ltr;
+    text-align: left;
+  }
+  .toolbtn {
+    @apply inline-flex h-8 min-w-8 items-center justify-center gap-1 rounded-md px-1.5 text-[13px] font-semibold text-slate-500 transition-colors hover:bg-slate-200/70 hover:text-slate-900 active:bg-slate-200 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100;
+  }
+  .toolbtn-active {
+    @apply bg-brand-100 text-brand-700 hover:bg-brand-100 hover:text-brand-700 dark:bg-brand-900/40 dark:text-brand-200 dark:hover:bg-brand-900/40 dark:hover:text-brand-200;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
   }
 }

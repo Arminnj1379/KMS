@@ -14,7 +14,7 @@ export function ArticleViewer({ content }: Props): JSX.Element {
     editable: false,
     editorProps: {
       attributes: {
-        class: 'px-1 py-2 text-sm leading-8 prose dark:prose-invert max-w-none',
+        class: 'kms-prose px-1 py-2',
         dir: 'auto',
       },
     },
@@ -35,7 +35,7 @@ export function ArticleViewer({ content }: Props): JSX.Element {
   if (!editor) return <p className="py-8 text-center text-sm text-slate-500">…</p>;
 
   return (
-    <div dir="rtl" className="rounded-xl bg-white dark:bg-slate-950">
+    <div dir="rtl">
       <EditorContent editor={editor} />
     </div>
   );

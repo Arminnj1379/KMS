@@ -1,8 +1,13 @@
 import axios from 'axios';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { AlertTriangle, Check, CloudOff, Loader2, Megaphone, Save } from 'lucide-react';
 import { t } from '../i18n';
 import { toApiMessage } from '../shared/lib/api-client';
+import { useToast } from '../shared/ui/Toast';
+import { PageHeader } from '../shared/ui/Chrome';
+import { Button } from '../shared/ui/Button';
+import { Field, Select, Textarea, TextInput } from '../shared/ui/Field';
 import { ArticleEditor } from '../features/articles/components/ArticleEditor';
 import type { Article } from '../features/articles/api';
 import {
@@ -14,9 +19,7 @@ import {
 import { parseTagNames } from '../features/articles/schemas';
 import { useCategories, useKb } from '../features/knowledge-bases/hooks';
 import type { CategoryNode } from '../features/knowledge-bases/api';
-
-const inputClass =
-  'mt-1 w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-950';
+import { formatFaNumber } from '../shared/lib/format-fa';
 
 function flatten(nodes: CategoryNode[], out: CategoryNode[] = []): CategoryNode[] {
   for (const n of nodes) {
@@ -46,6 +49,7 @@ export function ArticleEditorPage(): JSX.Element {
   const { kbId = '', articleId } = useParams();
   const isCreate = articleId === undefined;
   const navigate = useNavigate();
+  const toast = useToast();
   const kb = useKb(kbId);
   const existing = useArticle(kbId, articleId ?? '');
   const categories = useCategories(kbId);
@@ -136,6 +140,7 @@ export function ArticleEditorPage(): JSX.Element {
           categoryId: categoryId === '' ? undefined : categoryId,
           tagNames: parseTagNames(tags),
         });
+        toast.success(t('article.createdToast'));
         navigate(`/kbs/${kbId}/articles/${data.slug}`, { replace: true });
       } else {
         const note = changelog.trim();
@@ -152,11 +157,16 @@ export function ArticleEditorPage(): JSX.Element {
         setVersion(data.version);
         if (note) setChangelog('');
         setSavedAt(new Date().toLocaleTimeString('fa-IR'));
+        toast.success(t('common.savedToast'));
       }
     } catch (err) {
       const server = extractConflict(err);
       if (server) setConflict({ server });
-      else setError(toApiMessage(err, t('common.error')));
+      else {
+        const msg = toApiMessage(err, t('common.error'));
+        setError(msg);
+        toast.error(msg);
+      }
     }
   }
 
@@ -178,8 +188,11 @@ export function ArticleEditorPage(): JSX.Element {
       setVersion(data.version);
       setConflict(null);
       setSavedAt(new Date().toLocaleTimeString('fa-IR'));
+      toast.success(t('common.savedToast'));
     } catch (err) {
-      setError(toApiMessage(err, t('common.error')));
+      const msg = toApiMessage(err, t('common.error'));
+      setError(msg);
+      toast.error(msg);
     }
   }
 
@@ -201,81 +214,86 @@ export function ArticleEditorPage(): JSX.Element {
   if (!isCreate && (existing.isPending || !hydrated.current)) {
     if (existing.isError) {
       return (
-        <p className="py-16 text-center text-sm text-red-600">
+        <p className="mx-auto max-w-3xl py-16 text-center text-sm text-rose-600">
           {toApiMessage(existing.error, t('common.error'))}
         </p>
       );
     }
-    return <p className="py-16 text-center text-sm text-slate-500">{t('common.loading')}</p>;
+    return <p className="mx-auto max-w-3xl py-16 text-center text-sm text-slate-500">{t('common.loading')}</p>;
   }
 
   return (
     <section className="mx-auto max-w-3xl space-y-4">
-      <Link to={isCreate ? `/kbs/${kbId}/articles` : `/kbs/${kbId}/articles/${articleId}`} className="text-sm text-brand-600 underline">
-        {t('article.backToArticles')}
-      </Link>
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">{isCreate ? t('article.create') : t('article.edit')}</h1>
-        {!isCreate && (
-          <p className="text-xs text-slate-500">
-            {saving ? t('article.saving') : savedAt ? `${t('article.autosaved')}: ${savedAt}` : `v${version}`}
-          </p>
-        )}
-      </div>
+      <PageHeader
+        title={isCreate ? t('article.create') : t('article.edit')}
+        breadcrumbs={[
+          { label: t('nav.knowledgeBases'), to: '/kbs' },
+          ...(kb.data ? [{ label: kb.data.title, to: `/kbs/${kbId}` }] : []),
+          { label: t('article.listTitle'), to: `/kbs/${kbId}/articles` },
+          { label: isCreate ? t('article.create') : (existing.data?.title ?? t('article.edit')) },
+        ]}
+        actions={
+          !isCreate ? (
+            <span className="meta flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 dark:bg-slate-800" role="status">
+              {saving ? (
+                <>
+                  <Loader2 size={13} className="animate-spin" />
+                  {t('article.saving')}
+                </>
+              ) : savedAt ? (
+                <>
+                  <Check size={13} className="text-emerald-600" />
+                  {t('article.autosaved')}: {savedAt}
+                </>
+              ) : (
+                <>
+                  <CloudOff size={13} />
+                  {t('article.versionLabel', { version: formatFaNumber(version) })}
+                </>
+              )}
+            </span>
+          ) : undefined
+        }
+      />
 
-      <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:grid-cols-2 dark:border-slate-800 dark:bg-slate-900">
-        <label className="block text-sm">
-          {t('kb.title')}
-          <input value={title} onChange={(e) => setTitle(e.target.value)} required className={inputClass} />
-        </label>
+      <div className="surface grid gap-4 p-5 sm:grid-cols-2">
+        <Field label={t('kb.title')}>
+          <TextInput value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={200} />
+        </Field>
         {isCreate && (
-          <label className="block text-sm">
-            {t('kb.slug')}
-            <input
-              value={slug}
-              onChange={(e) => setSlug(e.target.value)}
-              required
-              dir="ltr"
-              pattern="[a-z0-9]+(-[a-z0-9]+)*"
-              className={inputClass}
-            />
-          </label>
+          <Field label={t('kb.slug')}>
+            <TextInput value={slug} onChange={(e) => setSlug(e.target.value)} required dir="ltr" pattern="[a-z0-9]+(-[a-z0-9]+)*" />
+          </Field>
         )}
-        <label className="block text-sm sm:col-span-2">
-          {t('kb.description')}
-          <textarea value={summary} onChange={(e) => setSummary(e.target.value)} rows={2} className={inputClass} />
-        </label>
-        <label className="block text-sm">
-          {t('kb.categories')}
-          <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className={inputClass}>
+        <div className="sm:col-span-2">
+          <Field label={t('kb.description')}>
+            <Textarea value={summary} onChange={(e) => setSummary(e.target.value)} rows={2} maxLength={500} />
+          </Field>
+        </div>
+        <Field label={t('kb.categories')}>
+          <Select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
             <option value="">{t('article.noCategory')}</option>
             {flatCats.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.path}
               </option>
             ))}
-          </select>
-        </label>
-        <label className="block text-sm">
-          {t('article.tagsPh')}
-          <input
-            value={tags}
-            onChange={(e) => setTags(e.target.value)}
-            placeholder={t('article.tagsPh')}
-            className={inputClass}
-          />
-        </label>
+          </Select>
+        </Field>
+        <Field label={t('article.tagsPh')}>
+          <TextInput value={tags} onChange={(e) => setTags(e.target.value)} placeholder={t('article.tagsPh')} />
+        </Field>
         {!isCreate && (
-          <label className="block text-sm sm:col-span-2">
-            {t('article.changelogPh')}
-            <input
-              value={changelog}
-              onChange={(e) => setChangelog(e.target.value)}
-              placeholder={t('article.changelogHint')}
-              maxLength={200}
-              className={inputClass}
-            />
-          </label>
+          <div className="sm:col-span-2">
+            <Field label={t('article.changelogPh')}>
+              <TextInput
+                value={changelog}
+                onChange={(e) => setChangelog(e.target.value)}
+                placeholder={t('article.changelogHint')}
+                maxLength={200}
+              />
+            </Field>
+          </div>
         )}
       </div>
 
@@ -290,50 +308,56 @@ export function ArticleEditorPage(): JSX.Element {
       )}
 
       {conflict && (
-        <div className="rounded-2xl border border-amber-400 bg-amber-50 p-4 text-sm dark:border-amber-800 dark:bg-amber-950">
-          <p className="font-semibold">{t('article.conflictTitle')}</p>
-          <p className="mt-1 text-slate-600 dark:text-slate-300">{t('article.conflictBody')}</p>
+        <div className="surface border-amber-300 bg-amber-50/60 p-4 dark:border-amber-800 dark:bg-amber-950/40" role="alert">
+          <p className="flex items-center gap-2 text-sm font-bold">
+            <AlertTriangle size={16} className="text-amber-600" />
+            {t('article.conflictTitle')}
+          </p>
+          <p className="mt-1 text-sm leading-7 text-slate-600 dark:text-slate-300">{t('article.conflictBody')}</p>
           <div className="mt-3 flex gap-2">
-            <button
-              type="button"
-              onClick={onReloadServer}
-              className="rounded-lg border border-slate-300 px-4 py-1.5 text-sm dark:border-slate-700"
-            >
+            <Button variant="secondary" size="sm" onClick={onReloadServer}>
               {t('article.reloadServer')}
-            </button>
-            <button
-              type="button"
-              onClick={() => void onForceSave()}
-              className="rounded-lg bg-brand-500 px-4 py-1.5 text-sm font-semibold text-white"
-            >
+            </Button>
+            <Button variant="primary" size="sm" onClick={() => void onForceSave()}>
               {t('article.forceSave')}
-            </button>
+            </Button>
           </div>
         </div>
       )}
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
-      {create.isError && <p className="text-sm text-red-600">{toApiMessage(create.error, t('common.error'))}</p>}
+      {error && <p className="form-error" role="alert">{error}</p>}
+      {create.isError && <p className="form-error" role="alert">{toApiMessage(create.error, t('common.error'))}</p>}
 
-      <div className="flex gap-2">
-        <button
-          type="button"
+      <div className="sticky bottom-4 flex items-center gap-2 rounded-card border bg-white/90 p-2.5 shadow-pop backdrop-blur dark:bg-slate-900/90" style={{ borderColor: 'var(--line)' }}>
+        <Button
+          variant="primary"
           onClick={() => void onSave()}
           disabled={create.isPending || update.isPending}
-          className="rounded-lg bg-brand-500 px-5 py-2 text-sm font-semibold text-white disabled:opacity-60"
         >
+          <Save size={16} />
           {t('common.save')}
-        </button>
+        </Button>
         {!isCreate && canPublish && (
-          <button
-            type="button"
-            onClick={() => void publish.mutateAsync()}
+          <Button
+            variant="secondary"
             disabled={publish.isPending}
-            className="rounded-lg border border-slate-300 px-4 py-2 text-sm dark:border-slate-700"
+            onClick={() => void (async () => {
+              try {
+                await publish.mutateAsync();
+                toast.success(t('article.publishedToast'));
+                navigate(`/kbs/${kbId}/articles/${articleId}`);
+              } catch (err) {
+                toast.error(toApiMessage(err, t('common.error')));
+              }
+            })()}
           >
+            <Megaphone size={16} />
             {t('article.publish')}
-          </button>
+          </Button>
         )}
+        <Link to={isCreate ? `/kbs/${kbId}/articles` : `/kbs/${kbId}/articles/${articleId}`} className="btn-ghost btn-sm ms-auto">
+          {t('article.backToArticles')}
+        </Link>
       </div>
     </section>
   );

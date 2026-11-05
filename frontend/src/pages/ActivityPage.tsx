@@ -1,8 +1,15 @@
 import { useState } from 'react';
+import { Activity, History } from 'lucide-react';
 import { t } from '../i18n';
 import { toApiMessage } from '../shared/lib/api-client';
+import { PageHeader } from '../shared/ui/Chrome';
+import { Button } from '../shared/ui/Button';
+import { Select } from '../shared/ui/Field';
+import { Badge } from '../shared/ui/Badge';
+import { EmptyState, InlineError, Skeleton } from '../shared/ui/Feedback';
 import { useMe } from '../features/auth/hooks';
 import { useAuditLogs } from '../features/audit/hooks';
+import { formatFaDate, formatFaNumber } from '../shared/lib/format-fa';
 
 const actionLabels: Record<string, string> = {
   'auth.register': 'ثبت‌نام',
@@ -29,6 +36,22 @@ const actionLabels: Record<string, string> = {
   'review.cancelled': 'لغو بررسی',
 };
 
+const actionTone: Record<string, 'blue' | 'green' | 'amber' | 'rose' | 'slate'> = {
+  'auth.register': 'green',
+  'auth.login': 'slate',
+  'auth.logout': 'slate',
+  'auth.change-password': 'amber',
+  'kb.create': 'blue',
+  'kb.delete': 'rose',
+  'article.create': 'blue',
+  'article.delete': 'rose',
+  'article.published': 'green',
+  'article.archived': 'amber',
+  'review.submitted': 'blue',
+  'review.approved': 'green',
+  'review.rejected': 'rose',
+};
+
 export function ActivityPage(): JSX.Element {
   const me = useMe();
   const isAdmin = me.data?.memberships.some((m) => m.role === 'org-admin') ?? false;
@@ -43,8 +66,8 @@ export function ActivityPage(): JSX.Element {
   if (!me.isPending && !isAdmin) {
     return (
       <section className="mx-auto max-w-4xl">
-        <h1 className="text-2xl font-bold">{t('activity.title')}</h1>
-        <div className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 p-5 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+        <PageHeader title={t('activity.title')} />
+        <div className="surface mt-4 p-5 text-sm text-amber-800 dark:text-amber-200">
           {t('admin.forbidden')}
         </div>
       </section>
@@ -52,70 +75,77 @@ export function ActivityPage(): JSX.Element {
   }
 
   return (
-    <section className="mx-auto max-w-4xl space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-2xl font-bold">{t('activity.title')}</h1>
-        <select
-          value={action}
-          onChange={(e) => {
-            setAction(e.target.value);
-            setPage(1);
-          }}
-          className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900"
-        >
-          <option value="">{t('activity.allActions')}</option>
-          {Object.entries(actionLabels).map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </select>
-      </div>
+    <section className="mx-auto max-w-4xl space-y-5">
+      <PageHeader
+        title={t('activity.title')}
+        description={t('activity.desc', { count: formatFaNumber(total) })}
+        actions={
+          <Select
+            value={action}
+            onChange={(e) => {
+              setAction(e.target.value);
+              setPage(1);
+            }}
+            className="w-auto"
+            aria-label={t('activity.allActions')}
+          >
+            <option value="">{t('activity.allActions')}</option>
+            {Object.entries(actionLabels).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </Select>
+        }
+      />
 
-      {list.isPending && <p className="text-sm text-slate-500">{t('common.loading')}</p>}
-      {list.isError && <p className="text-sm text-red-600">{toApiMessage(list.error, t('common.error'))}</p>}
+      {list.isPending && (
+        <div className="space-y-2.5">
+          <Skeleton className="h-16" />
+          <Skeleton className="h-16" />
+          <Skeleton className="h-16" />
+        </div>
+      )}
+      {list.isError && <InlineError message={toApiMessage(list.error, t('common.error'))} onRetry={() => void list.refetch()} />}
       {list.data && list.data.items.length === 0 && (
-        <p className="text-sm text-slate-500">{t('common.empty')}</p>
+        <div className="surface">
+          <EmptyState icon={History} title={t('activity.emptyTitle')} hint={t('activity.emptyHint')} />
+        </div>
       )}
       {list.data && list.data.items.length > 0 && (
-        <ul className="space-y-3">
+        <ol className="surface divide-y overflow-hidden" style={{ borderColor: 'var(--line)' }}>
           {list.data.items.map((a) => (
-            <li key={a.id} className="rounded-xl border border-slate-200 p-4 dark:border-slate-700">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-sm font-semibold">{actionLabels[a.action] ?? a.action}</p>
-                <span className="text-xs text-slate-500">{new Date(a.createdAt).toLocaleString('fa-IR')}</span>
+            <li key={a.id} className="flex items-start gap-3 px-5 py-3.5">
+              <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                <Activity size={15} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone={actionTone[a.action] ?? 'slate'}>{actionLabels[a.action] ?? a.action}</Badge>
+                  <span className="meta" dir="ltr">{a.resourceType} · {a.resourceId.slice(0, 8)}…</span>
+                </div>
+                <p className="meta mt-1">
+                  {formatFaDate(a.createdAt)}
+                  {a.actorId ? ` · ${t('activity.actor')}: ${a.actorId.slice(0, 8)}…` : ''}
+                  {a.ip ? ` · ${a.ip}` : ''}
+                </p>
               </div>
-              <p className="mt-1 text-xs text-slate-500">
-                {a.resourceType} · {a.resourceId.slice(0, 8)}…
-                {a.actorId ? ` · ${t('activity.actor')}: ${a.actorId.slice(0, 8)}…` : ''}
-                {a.ip ? ` · ${a.ip}` : ''}
-              </p>
             </li>
           ))}
-        </ul>
+        </ol>
       )}
 
       {maxPage > 1 && (
-        <div className="flex items-center justify-between">
-          <button
-            type="button"
-            disabled={page <= 1}
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            className="rounded-lg border border-slate-300 px-3 py-1 text-xs dark:border-slate-700 disabled:opacity-60"
-          >
+        <div className="flex items-center justify-center gap-2">
+          <Button variant="secondary" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
             {t('search.prev')}
-          </button>
-          <span className="text-xs text-slate-500">
-            {page} / {maxPage}
+          </Button>
+          <span className="meta tabular-nums">
+            {formatFaNumber(page)} / {formatFaNumber(maxPage)}
           </span>
-          <button
-            type="button"
-            disabled={page >= maxPage}
-            onClick={() => setPage((p) => Math.min(maxPage, p + 1))}
-            className="rounded-lg border border-slate-300 px-3 py-1 text-xs dark:border-slate-700 disabled:opacity-60"
-          >
+          <Button variant="secondary" size="sm" disabled={page >= maxPage} onClick={() => setPage((p) => Math.min(maxPage, p + 1))}>
             {t('search.next')}
-          </button>
+          </Button>
         </div>
       )}
     </section>

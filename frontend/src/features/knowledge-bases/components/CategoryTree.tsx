@@ -1,6 +1,11 @@
 import { useState } from 'react';
+import { Folder, FolderPlus, Pencil, Plus, Trash2 } from 'lucide-react';
 import { t } from '../../../i18n';
 import { toApiMessage } from '../../../shared/lib/api-client';
+import { useToast } from '../../../shared/ui/Toast';
+import { Button } from '../../../shared/ui/Button';
+import { ConfirmDialog, Dialog } from '../../../shared/ui/Dialog';
+import { Field, Select, TextInput } from '../../../shared/ui/Field';
 import { useCreateCategory, useDeleteCategory, useUpdateCategory } from '../hooks';
 import type { CategoryNode } from '../api';
 
@@ -22,29 +27,27 @@ export function CategoryTree({ kbId, nodes, canManage }: Props): JSX.Element {
   const create = useCreateCategory(kbId);
   const update = useUpdateCategory(kbId);
   const remove = useDeleteCategory(kbId);
+  const toast = useToast();
   const [addingTo, setAddingTo] = useState<string | null>(null);
   const [editing, setEditing] = useState<CategoryNode | null>(null);
+  const [deleting, setDeleting] = useState<CategoryNode | null>(null);
   const [form, setForm] = useState({ title: '', slug: '', description: '', parentId: '' });
-  const [error, setError] = useState<string | null>(null);
   const all = flatten(nodes);
 
   function openAdd(parentId: string | null): void {
     setAddingTo(parentId ?? 'root');
     setEditing(null);
     setForm({ title: '', slug: '', description: '', parentId: parentId ?? '' });
-    setError(null);
   }
 
   function openEdit(node: CategoryNode): void {
     setEditing(node);
     setAddingTo(null);
     setForm({ title: node.title, slug: node.slug, description: node.description ?? '', parentId: node.parentId ?? '' });
-    setError(null);
   }
 
   async function submit(e: React.FormEvent): Promise<void> {
     e.preventDefault();
-    setError(null);
     try {
       if (editing) {
         await update.mutateAsync({
@@ -55,6 +58,7 @@ export function CategoryTree({ kbId, nodes, canManage }: Props): JSX.Element {
             parentId: form.parentId === '' ? null : form.parentId,
           },
         });
+        toast.success(t('common.savedToast'));
         setEditing(null);
       } else {
         await create.mutateAsync({
@@ -63,54 +67,46 @@ export function CategoryTree({ kbId, nodes, canManage }: Props): JSX.Element {
           description: form.description || undefined,
           parentId: form.parentId === '' ? undefined : form.parentId,
         });
+        toast.success(t('kb.categoryCreatedToast'));
         setAddingTo(null);
       }
     } catch (err) {
-      setError(toApiMessage(err, t('common.error')));
+      toast.error(toApiMessage(err, t('common.error')));
     }
   }
 
-  async function onDelete(node: CategoryNode): Promise<void> {
-    setError(null);
+  async function onDelete(): Promise<void> {
+    if (!deleting) return;
     try {
-      await remove.mutateAsync(node.id);
+      await remove.mutateAsync(deleting.id);
+      toast.success(t('kb.categoryDeletedToast'));
+      setDeleting(null);
     } catch (err) {
-      setError(toApiMessage(err, t('common.error')));
+      toast.error(toApiMessage(err, t('common.error')));
     }
   }
 
   function renderNodes(list: CategoryNode[], depth: number): JSX.Element[] {
     return list.map((n) => (
-      <li key={n.id} className="mt-1">
+      <li key={n.id}>
         <div
-          className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-sm dark:border-slate-800"
-          style={{ marginInlineStart: depth * 16 }}
+          className="group flex items-center gap-2 rounded-control px-2.5 py-2 text-sm transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50"
+          style={{ marginInlineStart: depth * 20 }}
         >
-          <span className="font-medium">{n.title}</span>
-          <span dir="ltr" className="text-xs text-slate-400">{n.path}</span>
+          <Folder size={15} className="shrink-0 text-slate-400" />
+          <span className="truncate font-medium">{n.title}</span>
+          <span dir="ltr" className="truncate text-xs text-slate-400">{n.path}</span>
           {canManage && (
-            <span className="ms-auto flex gap-1">
-              <button
-                type="button"
-                onClick={() => openAdd(n.id)}
-                className="rounded border border-slate-300 px-2 py-0.5 text-xs dark:border-slate-700"
-              >
-                {t('kb.addChild')}
-              </button>
-              <button
-                type="button"
-                onClick={() => openEdit(n)}
-                className="rounded border border-slate-300 px-2 py-0.5 text-xs dark:border-slate-700"
-              >
-                {t('common.edit')}
-              </button>
-              <button
-                type="button"
-                onClick={() => void onDelete(n)}
-                className="rounded border border-red-300 px-2 py-0.5 text-xs text-red-600 dark:border-red-900"
-              >
-                {t('kb.delete')}
-              </button>
+            <span className="ms-auto flex shrink-0 gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+              <Button variant="ghost" size="icon-sm" onClick={() => openAdd(n.id)} title={t('kb.addChild')} aria-label={t('kb.addChild')}>
+                <FolderPlus size={14} />
+              </Button>
+              <Button variant="ghost" size="icon-sm" onClick={() => openEdit(n)} title={t('common.edit')} aria-label={t('common.edit')}>
+                <Pencil size={14} />
+              </Button>
+              <Button variant="ghost" size="icon-sm" onClick={() => setDeleting(n)} title={t('kb.delete')} aria-label={t('kb.delete')} className="hover:text-rose-600 dark:hover:text-rose-400">
+                <Trash2 size={14} />
+              </Button>
             </span>
           )}
         </div>
@@ -120,87 +116,78 @@ export function CategoryTree({ kbId, nodes, canManage }: Props): JSX.Element {
   }
 
   const showForm = addingTo !== null || editing !== null;
+  const parentOptions = all.filter((c) => !editing || (c.id !== editing.id && !c.path.startsWith(`${editing.path}/`)));
 
   return (
     <div>
       {canManage && (
-        <div className="mb-3">
-          <button
-            type="button"
-            onClick={() => openAdd(null)}
-            className="rounded-lg bg-brand-500 px-3 py-1.5 text-sm font-semibold text-white"
-          >
-            {t('kb.addCategory')}
-          </button>
-        </div>
+        <Button variant="secondary" size="sm" onClick={() => openAdd(null)} className="mb-3">
+          <Plus size={15} />
+          {t('kb.addCategory')}
+        </Button>
       )}
-      {nodes.length === 0 && <p className="text-sm text-slate-500">{t('common.empty')}</p>}
-      <ul>{renderNodes(nodes, 0)}</ul>
-      {showForm && (
-        <form onSubmit={(e) => void submit(e)} className="mt-4 space-y-3 rounded-xl border border-slate-200 p-4 dark:border-slate-800">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block text-sm">
-              {t('kb.categoryTitle')}
-              <input
-                value={form.title}
-                onChange={(e) => setForm({ ...form, title: e.target.value })}
-                required
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-950"
-              />
-            </label>
+      {nodes.length === 0 && <p className="meta">{t('common.empty')}</p>}
+      <ul className="space-y-0.5">{renderNodes(nodes, 0)}</ul>
+
+      <Dialog
+        open={showForm}
+        title={editing ? t('common.edit') : addingTo === 'root' ? t('kb.addCategory') : t('kb.addChild')}
+        onClose={() => {
+          setAddingTo(null);
+          setEditing(null);
+        }}
+      >
+        <form onSubmit={(e) => void submit(e)} className="space-y-4" noValidate>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label={t('kb.categoryTitle')}>
+              <TextInput value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required />
+            </Field>
             {!editing && (
-              <label className="block text-sm">
-                {t('kb.slug')}
-                <input
-                  value={form.slug}
-                  onChange={(e) => setForm({ ...form, slug: e.target.value })}
-                  required
-                  dir="ltr"
-                  pattern="[a-z0-9]+(-[a-z0-9]+)*"
-                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-950"
-                />
-              </label>
+              <Field label={t('kb.slug')}>
+                <TextInput value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} required dir="ltr" pattern="[a-z0-9]+(-[a-z0-9]+)*" />
+              </Field>
             )}
-            <label className="block text-sm">
-              {t('kb.parent')}
-              <select
-                value={form.parentId}
-                onChange={(e) => setForm({ ...form, parentId: e.target.value })}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-950"
-              >
-                <option value="">{t('kb.root')}</option>
-                {all
-                  .filter((c) => !editing || (c.id !== editing.id && !c.path.startsWith(`${editing.path}/`)))
-                  .map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.path}
-                    </option>
-                  ))}
-              </select>
-            </label>
           </div>
-          {error && <p className="text-sm text-red-600">{error}</p>}
-          <div className="flex gap-2">
-            <button
-              type="submit"
-              disabled={create.isPending || update.isPending}
-              className="rounded-lg bg-brand-500 px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-60"
-            >
-              {t('common.save')}
-            </button>
-            <button
-              type="button"
+          <Field label={t('kb.parent')}>
+            <Select value={form.parentId} onChange={(e) => setForm({ ...form, parentId: e.target.value })}>
+              <option value="">{t('kb.root')}</option>
+              {parentOptions.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.path}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          {(create.isError || update.isError) && (
+            <p className="form-error">{toApiMessage(create.error ?? update.error, t('common.error'))}</p>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="ghost"
               onClick={() => {
                 setAddingTo(null);
                 setEditing(null);
               }}
-              className="rounded-lg border border-slate-300 px-4 py-1.5 text-sm dark:border-slate-700"
             >
               {t('common.cancel')}
-            </button>
+            </Button>
+            <Button type="submit" variant="primary" disabled={create.isPending || update.isPending}>
+              {t('common.save')}
+            </Button>
           </div>
         </form>
-      )}
+      </Dialog>
+
+      <ConfirmDialog
+        open={deleting !== null}
+        title={t('kb.delete')}
+        body={t('kb.categoryDeleteConfirm', { title: deleting?.title ?? '' })}
+        confirmLabel={t('kb.delete')}
+        danger
+        pending={remove.isPending}
+        onClose={() => setDeleting(null)}
+        onConfirm={() => void onDelete()}
+      />
     </div>
   );
 }

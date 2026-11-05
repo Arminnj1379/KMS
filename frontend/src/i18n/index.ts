@@ -20,6 +20,11 @@ function lookup(locale: Locale, key: string): string | undefined {
   return typeof node === 'string' ? node : undefined;
 }
 
-export function t(key: I18nKey, locale: Locale = 'fa'): string {
-  return lookup(locale, key) ?? lookup('fa', key) ?? key;
+export function t(key: I18nKey, vars?: Record<string, string | number>, locale: Locale = 'fa'): string {
+  const raw = lookup(locale, key) ?? lookup('fa', key) ?? key;
+  if (!vars) return raw;
+  return Object.entries(vars).reduce(
+    (acc, [name, value]) => acc.replace(`{${name}}`, String(value)),
+    raw,
+  );
 }

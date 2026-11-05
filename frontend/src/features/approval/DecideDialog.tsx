@@ -2,10 +2,10 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { t } from '../../i18n';
 import { toApiMessage } from '../../shared/lib/api-client';
+import { Button } from '../../shared/ui/Button';
+import { Dialog } from '../../shared/ui/Dialog';
+import { Field, Textarea } from '../../shared/ui/Field';
 import { decideReviewSchema, type DecideReviewInput } from './schemas';
-
-const inputClass =
-  'mt-1 w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-950';
 
 /** Shared approve/reject dialog: optional decision note + confirm. */
 export function DecideDialog({
@@ -36,41 +36,21 @@ export function DecideDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/40 p-4">
-      <form
-        onSubmit={(e) => void form.handleSubmit(onSubmit)(e)}
-        className="w-full max-w-md space-y-3 rounded-2xl bg-white p-5 dark:bg-slate-900"
-      >
-        <h2 className="text-base font-semibold">{title}</h2>
-        <label className="block text-sm">
-          {t('review.decisionNote')}
-          <textarea {...form.register('comment')} rows={2} maxLength={500} className={inputClass} />
-          {form.formState.errors.comment && (
-            <span className="text-xs text-red-600">{form.formState.errors.comment.message}</span>
-          )}
-        </label>
-        {error ? <p className="text-sm text-red-600">{toApiMessage(error, t('common.error'))}</p> : null}
-        <div className="flex gap-2">
-          <button
-            type="submit"
-            disabled={pending}
-            className={
-              danger
-                ? 'rounded-lg bg-red-600 px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-60'
-                : 'rounded-lg bg-brand-500 px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-60'
-            }
-          >
-            {confirmLabel}
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg border border-slate-300 px-4 py-1.5 text-sm dark:border-slate-700"
-          >
+    <Dialog open={open} title={title} onClose={onClose}>
+      <form onSubmit={(e) => void form.handleSubmit(onSubmit)(e)} className="space-y-4" noValidate>
+        <Field label={t('review.decisionNote')} error={form.formState.errors.comment?.message}>
+          <Textarea {...form.register('comment')} rows={2} maxLength={500} />
+        </Field>
+        {error ? <p className="form-error">{toApiMessage(error, t('common.error'))}</p> : null}
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={onClose}>
             {t('common.cancel')}
-          </button>
+          </Button>
+          <Button type="submit" variant={danger ? 'danger-solid' : 'primary'} disabled={pending}>
+            {confirmLabel}
+          </Button>
         </div>
       </form>
-    </div>
+    </Dialog>
   );
 }

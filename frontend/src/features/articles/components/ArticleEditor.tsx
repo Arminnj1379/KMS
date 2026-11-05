@@ -1,6 +1,20 @@
 import StarterKit from '@tiptap/starter-kit';
 import { EditorContent, useEditor } from '@tiptap/react';
 import { useEffect, useRef } from 'react';
+import {
+  Bold,
+  Code2,
+  Heading2,
+  Heading3,
+  Italic,
+  List,
+  ListOrdered,
+  Quote,
+  Redo2,
+  Strikethrough,
+  Undo2,
+} from 'lucide-react';
+import { cn } from '../../../shared/lib/cn';
 
 interface Props {
   initialContent?: Record<string, unknown> | null;
@@ -12,24 +26,31 @@ function ToolbarButton({
   onClick,
   active,
   label,
+  children,
 }: {
   onClick: () => void;
   active?: boolean;
   label: string;
+  children: React.ReactNode;
 }): JSX.Element {
   return (
     <button
       type="button"
+      title={label}
+      aria-label={label}
+      aria-pressed={active ?? false}
       onMouseDown={(e) => {
         e.preventDefault();
         onClick();
       }}
-      className={`rounded-md px-2 py-1 text-sm ${active ? 'bg-brand-500 text-white' : 'hover:bg-slate-200 dark:hover:bg-slate-800'}`}
+      className={cn('toolbtn', active && 'toolbtn-active')}
     >
-      {label}
+      {children}
     </button>
   );
 }
+
+const iconProps = { size: 16, strokeWidth: 2 } as const;
 
 /** Persian-first Tiptap editor (JSON is the source of truth; HTML never stored). */
 export function ArticleEditor({ initialContent, onChange, autofocus }: Props): JSX.Element {
@@ -42,7 +63,6 @@ export function ArticleEditor({ initialContent, onChange, autofocus }: Props): J
     autofocus: autofocus ?? false,
     editorProps: {
       attributes: {
-        class: 'min-h-64 px-4 py-3 text-sm leading-7 outline-none prose dark:prose-invert max-w-none',
         dir: 'auto',
       },
     },
@@ -59,22 +79,49 @@ export function ArticleEditor({ initialContent, onChange, autofocus }: Props): J
 
   if (!editor) return <p className="py-8 text-center text-sm text-slate-500">…</p>;
 
+  const toggle = (fn: () => void) => () => fn();
+
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-300 dark:border-slate-700">
-      <div dir="ltr" className="flex flex-wrap items-center gap-1 border-b border-slate-200 bg-slate-50 px-2 py-1.5 dark:border-slate-800 dark:bg-slate-900">
-        <ToolbarButton onClick={() => editor.chain().focus().toggleBold().run()} active={editor.isActive('bold')} label="B" />
-        <ToolbarButton onClick={() => editor.chain().focus().toggleItalic().run()} active={editor.isActive('italic')} label="I" />
-        <ToolbarButton onClick={() => editor.chain().focus().toggleStrike().run()} active={editor.isActive('strike')} label="S" />
-        <ToolbarButton onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} active={editor.isActive('heading', { level: 2 })} label="H2" />
-        <ToolbarButton onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} active={editor.isActive('heading', { level: 3 })} label="H3" />
-        <ToolbarButton onClick={() => editor.chain().focus().toggleBulletList().run()} active={editor.isActive('bulletList')} label="• List" />
-        <ToolbarButton onClick={() => editor.chain().focus().toggleOrderedList().run()} active={editor.isActive('orderedList')} label="1. List" />
-        <ToolbarButton onClick={() => editor.chain().focus().toggleBlockquote().run()} active={editor.isActive('blockquote')} label="❝" />
-        <ToolbarButton onClick={() => editor.chain().focus().toggleCodeBlock().run()} active={editor.isActive('codeBlock')} label="{ }" />
-        <ToolbarButton onClick={() => editor.chain().focus().undo().run()} label="↩" />
-        <ToolbarButton onClick={() => editor.chain().focus().redo().run()} label="↪" />
+    <div className="surface-flat tiptap-wrap overflow-hidden">
+      <div dir="ltr" className="hairline-b flex flex-wrap items-center gap-0.5 bg-slate-50/80 px-2 py-1.5 dark:bg-slate-900">
+        <ToolbarButton onClick={toggle(() => editor.chain().focus().toggleBold().run())} active={editor.isActive('bold')} label="درشت">
+          <Bold {...iconProps} />
+        </ToolbarButton>
+        <ToolbarButton onClick={toggle(() => editor.chain().focus().toggleItalic().run())} active={editor.isActive('italic')} label="کج">
+          <Italic {...iconProps} />
+        </ToolbarButton>
+        <ToolbarButton onClick={toggle(() => editor.chain().focus().toggleStrike().run())} active={editor.isActive('strike')} label="خط‌خورده">
+          <Strikethrough {...iconProps} />
+        </ToolbarButton>
+        <span className="mx-1 h-5 w-px bg-slate-200 dark:bg-slate-700" aria-hidden />
+        <ToolbarButton onClick={toggle(() => editor.chain().focus().toggleHeading({ level: 2 }).run())} active={editor.isActive('heading', { level: 2 })} label="تیتر ۲">
+          <Heading2 {...iconProps} />
+        </ToolbarButton>
+        <ToolbarButton onClick={toggle(() => editor.chain().focus().toggleHeading({ level: 3 }).run())} active={editor.isActive('heading', { level: 3 })} label="تیتر ۳">
+          <Heading3 {...iconProps} />
+        </ToolbarButton>
+        <span className="mx-1 h-5 w-px bg-slate-200 dark:bg-slate-700" aria-hidden />
+        <ToolbarButton onClick={toggle(() => editor.chain().focus().toggleBulletList().run())} active={editor.isActive('bulletList')} label="فهرست">
+          <List {...iconProps} />
+        </ToolbarButton>
+        <ToolbarButton onClick={toggle(() => editor.chain().focus().toggleOrderedList().run())} active={editor.isActive('orderedList')} label="فهرست شماره‌دار">
+          <ListOrdered {...iconProps} />
+        </ToolbarButton>
+        <ToolbarButton onClick={toggle(() => editor.chain().focus().toggleBlockquote().run())} active={editor.isActive('blockquote')} label="نقل‌قول">
+          <Quote {...iconProps} />
+        </ToolbarButton>
+        <ToolbarButton onClick={toggle(() => editor.chain().focus().toggleCodeBlock().run())} active={editor.isActive('codeBlock')} label="کد">
+          <Code2 {...iconProps} />
+        </ToolbarButton>
+        <span className="mx-1 h-5 w-px bg-slate-200 dark:bg-slate-700" aria-hidden />
+        <ToolbarButton onClick={toggle(() => editor.chain().focus().undo().run())} label="بازگردانی">
+          <Undo2 {...iconProps} />
+        </ToolbarButton>
+        <ToolbarButton onClick={toggle(() => editor.chain().focus().redo().run())} label="تکرار">
+          <Redo2 {...iconProps} />
+        </ToolbarButton>
       </div>
-      <div dir="rtl" className="bg-white dark:bg-slate-950">
+      <div dir="rtl">
         <EditorContent editor={editor} />
       </div>
     </div>

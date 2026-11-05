@@ -1,7 +1,24 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import {
+  Archive,
+  Eye,
+  FileEdit,
+  History,
+  Megaphone,
+  RotateCcw,
+  Send,
+  Trash2,
+  Undo2,
+} from 'lucide-react';
 import { t } from '../i18n';
 import { toApiMessage } from '../shared/lib/api-client';
+import { useToast } from '../shared/ui/Toast';
+import { PageHeader } from '../shared/ui/Chrome';
+import { Button } from '../shared/ui/Button';
+import { ConfirmDialog } from '../shared/ui/Dialog';
+import { Badge, TagChip } from '../shared/ui/Badge';
+import { EmptyState, InlineError, Skeleton } from '../shared/ui/Feedback';
 import { ArticleViewer } from '../features/articles/components/ArticleViewer';
 import { AttachmentsCard } from '../features/documents/AttachmentsCard';
 import { HistoryCard } from '../features/article-versions/HistoryCard';
@@ -18,10 +35,14 @@ import {
   useUnpublishArticle,
 } from '../features/articles/hooks';
 import { useKb } from '../features/knowledge-bases/hooks';
+import { formatFaDate, formatFaNumber } from '../shared/lib/format-fa';
+
+const statusTone = { draft: 'slate', in_review: 'amber', published: 'green', archived: 'blue' } as const;
 
 export function ArticleViewPage(): JSX.Element {
   const { kbId = '', articleId = '' } = useParams();
   const navigate = useNavigate();
+  const toast = useToast();
   const kb = useKb(kbId);
   const article = useArticle(kbId, articleId);
   const related = useRelatedArticles(kbId, articleId);
@@ -34,6 +55,7 @@ export function ArticleViewPage(): JSX.Element {
   const reviews = useArticleReviews(kbId, articleId);
   const cancelReview = useCancelReview(kbId, articleId);
   const [submitOpen, setSubmitOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const role = kb.data?.role ?? null;
   const canWrite = role === 'manager' || role === 'contributor' || role === 'org-admin';
@@ -45,23 +67,6 @@ export function ArticleViewPage(): JSX.Element {
     published: t('article.status_published'),
     archived: t('article.status_archived'),
   };
-
-  if (article.isPending) return <p className="py-16 text-center text-sm text-slate-500">{t('common.loading')}</p>;
-  if (article.isError || !article.data) {
-    return <p className="py-16 text-center text-sm text-red-600">{toApiMessage(article.error, t('common.error'))}</p>;
-  }
-
-  const a = article.data;
-
-  const meId = me.data?.user.id ?? null;
-  const pendingReview = reviews.data?.find((r) => r.status === 'pending') ?? null;
-  const canCancelReview = pendingReview !== null && (pendingReview.requesterId === meId || canManage);
-
-  async function onDelete(): Promise<void> {
-    await del.mutateAsync(a.id);
-    navigate(`/kbs/${kbId}/articles`, { replace: true });
-  }
-
   const reviewStatusLabel: Record<string, string> = {
     pending: t('review.status_pending'),
     approved: t('review.status_approved'),
@@ -69,154 +74,208 @@ export function ArticleViewPage(): JSX.Element {
     cancelled: t('review.status_cancelled'),
   };
 
-  return (
-    <section className="mx-auto max-w-3xl space-y-6">
-      <Link to={`/kbs/${kbId}/articles`} className="text-sm text-brand-600 underline">
-        {t('article.backToArticles')}
-      </Link>
+  if (article.isPending) {
+    return (
+      <section className="mx-auto max-w-3xl space-y-4">
+        <Skeleton className="h-5 w-56" />
+        <Skeleton className="h-9 w-3/4" />
+        <div className="surface p-8"><Skeleton className="h-64" /></div>
+      </section>
+    );
+  }
+  if (article.isError || !article.data) {
+    return (
+      <section className="mx-auto max-w-3xl">
+        <InlineError message={toApiMessage(article.error, t('common.error'))} onRetry={() => void article.refetch()} />
+      </section>
+    );
+  }
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold">{a.title}</h1>
-            <p className="mt-1 text-xs text-slate-500">
-              {statusLabel[a.status] ?? a.status} · v{a.version} · {t('article.views')}: {a.viewCount}
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {canWrite && a.status === 'draft' && (
-              <button
-                type="button"
-                onClick={() => setSubmitOpen(true)}
-                className="rounded-lg bg-brand-500 px-3 py-1 text-sm font-semibold text-white"
-              >
-                {t('review.submit')}
-              </button>
-            )}
+  const a = article.data;
+  const meId = me.data?.user.id ?? null;
+  const pendingReview = reviews.data?.find((r) => r.status === 'pending') ?? null;
+  const canCancelReview = pendingReview !== null && (pendingReview.requesterId === meId || canManage);
+
+  async function run(promise: Promise<unknown>, ok: string): Promise<void> {
+    try {
+      await promise;
+      toast.success(ok);
+    } catch (err) {
+      toast.error(toApiMessage(err, t('common.error')));
+    }
+  }
+
+  async function onDelete(): Promise<void> {
+    try {
+      await del.mutateAsync(a.id);
+      toast.success(t('article.deletedToast'));
+      navigate(`/kbs/${kbId}/articles`, { replace: true });
+    } catch (err) {
+      toast.error(toApiMessage(err, t('common.error')));
+      setConfirmDelete(false);
+    }
+  }
+
+  return (
+    <section className="mx-auto max-w-3xl space-y-5">
+      <PageHeader
+        title={a.title}
+        breadcrumbs={[
+          { label: t('nav.knowledgeBases'), to: '/kbs' },
+          ...(kb.data ? [{ label: kb.data.title, to: `/kbs/${kbId}` }] : []),
+          { label: t('article.listTitle'), to: `/kbs/${kbId}/articles` },
+          { label: a.title },
+        ]}
+        actions={
+          <>
             {canWrite && (
-              <Link
-                to={`/kbs/${kbId}/articles/${a.slug}/edit`}
-                className="rounded-lg border border-slate-300 px-3 py-1 text-sm dark:border-slate-700"
-              >
+              <Link to={`/kbs/${kbId}/articles/${a.slug}/edit`} className="btn-secondary btn-sm">
+                <FileEdit size={15} />
                 {t('common.edit')}
               </Link>
             )}
-            {canManage && a.status !== 'published' && a.status !== 'archived' && (
-              <button
-                type="button"
-                disabled={publish.isPending}
-                onClick={() => void publish.mutateAsync()}
-                className="rounded-lg bg-brand-500 px-3 py-1 text-sm font-semibold text-white"
-              >
-                {t('article.publish')}
-              </button>
-            )}
-            {canManage && a.status === 'published' && (
-              <button
-                type="button"
-                disabled={unpublish.isPending}
-                onClick={() => void unpublish.mutateAsync()}
-                className="rounded-lg border border-slate-300 px-3 py-1 text-sm dark:border-slate-700"
-              >
-                {t('article.unpublish')}
-              </button>
-            )}
-            {canManage && a.status !== 'archived' && (
-              <button
-                type="button"
-                disabled={archive.isPending}
-                onClick={() => void archive.mutateAsync()}
-                className="rounded-lg border border-slate-300 px-3 py-1 text-sm dark:border-slate-700"
-              >
-                {t('article.archive')}
-              </button>
-            )}
-            {canManage && a.status === 'archived' && (
-              <button
-                type="button"
-                disabled={restore.isPending}
-                onClick={() => void restore.mutateAsync()}
-                className="rounded-lg border border-slate-300 px-3 py-1 text-sm dark:border-slate-700"
-              >
-                {t('article.restore')}
-              </button>
-            )}
             {canManage && (
-              <button
-                type="button"
-                disabled={del.isPending}
-                onClick={() => void onDelete()}
-                className="rounded-lg border border-red-300 px-3 py-1 text-sm text-red-600 dark:border-red-900"
-              >
+              <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(true)} className="text-rose-600 hover:text-rose-700 dark:text-rose-400">
+                <Trash2 size={15} />
                 {t('kb.delete')}
-              </button>
+              </Button>
             )}
-          </div>
-        </div>
-        {a.summary && <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">{a.summary}</p>}
-        {a.tagNames.length > 0 && <p className="mt-2 text-xs text-slate-500">{a.tagNames.join('، ')}</p>}
+          </>
+        }
+      />
+
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        <Badge tone={statusTone[a.status as keyof typeof statusTone] ?? 'slate'}>
+          {statusLabel[a.status] ?? a.status}
+        </Badge>
+        <span className="meta">{t('article.versionLabel', { version: formatFaNumber(a.version) })}</span>
+        <span className="meta flex items-center gap-1">
+          <Eye size={13} />
+          {formatFaNumber(a.viewCount)} {t('article.views')}
+        </span>
+        <span className="meta">{formatFaDate(a.updatedAt)}</span>
       </div>
 
-      <div className="rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
+      {a.summary && (
+        <p className="border-s-2 border-brand-400 ps-4 text-[15px] leading-8 text-slate-600 dark:text-slate-300">
+          {a.summary}
+        </p>
+      )}
+
+      {a.tagNames.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {a.tagNames.map((tagName) => (
+            <TagChip key={tagName}>{tagName}</TagChip>
+          ))}
+        </div>
+      )}
+
+      {(canWrite || canManage) && (
+        <div className="surface flex flex-wrap items-center gap-2 p-3">
+          {canWrite && a.status === 'draft' && (
+            <Button variant="primary" size="sm" onClick={() => setSubmitOpen(true)}>
+              <Send size={15} />
+              {t('review.submit')}
+            </Button>
+          )}
+          {canManage && a.status !== 'published' && a.status !== 'archived' && (
+            <Button variant="secondary" size="sm" disabled={publish.isPending} onClick={() => void run(publish.mutateAsync(), t('article.publishedToast'))}>
+              <Megaphone size={15} />
+              {t('article.publish')}
+            </Button>
+          )}
+          {canManage && a.status === 'published' && (
+            <Button variant="secondary" size="sm" disabled={unpublish.isPending} onClick={() => void run(unpublish.mutateAsync(), t('article.unpublishedToast'))}>
+              <Undo2 size={15} />
+              {t('article.unpublish')}
+            </Button>
+          )}
+          {canManage && a.status !== 'archived' && (
+            <Button variant="secondary" size="sm" disabled={archive.isPending} onClick={() => void run(archive.mutateAsync(), t('article.archivedToast'))}>
+              <Archive size={15} />
+              {t('article.archive')}
+            </Button>
+          )}
+          {canManage && a.status === 'archived' && (
+            <Button variant="secondary" size="sm" disabled={restore.isPending} onClick={() => void run(restore.mutateAsync(), t('article.restoredToast'))}>
+              <RotateCcw size={15} />
+              {t('article.restore')}
+            </Button>
+          )}
+        </div>
+      )}
+
+      <article className="surface px-6 py-7 sm:px-9">
         <ArticleViewer content={a.contentJson} />
-      </div>
+      </article>
 
       <AttachmentsCard kbId={kbId} articleId={articleId} canWrite={canWrite} />
       <HistoryCard kbId={kbId} articleId={articleId} canWrite={canWrite} />
 
       {pendingReview && (
-        <div className="rounded-2xl border border-amber-400 bg-amber-50 p-5 text-sm dark:border-amber-800 dark:bg-amber-950">
-          <p className="font-semibold">{t('review.pendingTitle')}</p>
-          {pendingReview.comment && (
-            <p className="mt-1 text-slate-600 dark:text-slate-300">{pendingReview.comment}</p>
-          )}
+        <div className="surface border-amber-300 bg-amber-50/60 p-5 dark:border-amber-800 dark:bg-amber-950/40">
+          <p className="text-sm font-bold">{t('review.pendingTitle')}</p>
+          {pendingReview.comment && <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{pendingReview.comment}</p>}
           {canCancelReview && (
-            <button
-              type="button"
-              disabled={cancelReview.isPending}
-              onClick={() => void cancelReview.mutateAsync(pendingReview.id)}
-              className="mt-3 rounded-lg border border-slate-300 px-3 py-1 text-xs dark:border-slate-700"
-            >
+            <Button variant="secondary" size="sm" disabled={cancelReview.isPending} onClick={() => void run(cancelReview.mutateAsync(pendingReview.id), t('review.cancelledToast'))} className="mt-3">
               {t('review.cancel')}
-            </button>
+            </Button>
           )}
         </div>
-      )}
-      {cancelReview.isError && (
-        <p className="text-sm text-red-600">{toApiMessage(cancelReview.error, t('common.error'))}</p>
       )}
 
       {reviews.data && reviews.data.length > 0 && (
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-          <h2 className="text-sm font-semibold">{t('review.historyTitle')}</h2>
-          <ul className="mt-2 space-y-1">
+        <section className="surface overflow-hidden" aria-label={t('review.historyTitle')}>
+          <div className="hairline-b flex items-center gap-2 px-5 py-3.5">
+            <History size={16} className="text-slate-400" />
+            <h2 className="section-title">{t('review.historyTitle')}</h2>
+          </div>
+          <ul className="divide-y divide-slate-100 dark:divide-slate-800">
             {reviews.data.map((r) => (
-              <li key={r.id} className="text-sm text-slate-600 dark:text-slate-300">
-                {reviewStatusLabel[r.status] ?? r.status}
-                {r.comment ? ` — ${r.comment}` : ''}
-                <span className="text-xs text-slate-400"> · {new Date(r.createdAt).toLocaleString('fa-IR')}</span>
+              <li key={r.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 px-5 py-2.5 text-sm">
+                <Badge tone={r.status === 'approved' ? 'green' : r.status === 'rejected' ? 'rose' : r.status === 'cancelled' ? 'slate' : 'amber'}>
+                  {reviewStatusLabel[r.status] ?? r.status}
+                </Badge>
+                {r.comment && <span className="min-w-0 flex-1 truncate text-slate-600 dark:text-slate-300">{r.comment}</span>}
+                <span className="meta ms-auto">{formatFaDate(r.createdAt)}</span>
               </li>
             ))}
           </ul>
-        </div>
+        </section>
       )}
 
       {related.data && related.data.length > 0 && (
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-          <h2 className="text-sm font-semibold">{t('article.related')}</h2>
-          <ul className="mt-2 space-y-1">
+        <section className="surface overflow-hidden" aria-label={t('article.related')}>
+          <div className="hairline-b px-5 py-3.5">
+            <h2 className="section-title">{t('article.related')}</h2>
+          </div>
+          <ul className="divide-y divide-slate-100 dark:divide-slate-800">
             {related.data.map((r) => (
               <li key={r.id}>
-                <Link to={`/kbs/${kbId}/articles/${r.slug}`} className="text-sm text-brand-600 hover:underline">
+                <Link to={`/kbs/${kbId}/articles/${r.slug}`} className="block px-5 py-2.5 text-sm font-medium transition-colors hover:bg-slate-50 hover:text-brand-700 dark:hover:bg-slate-800/40 dark:hover:text-brand-200">
                   {r.title}
                 </Link>
               </li>
             ))}
           </ul>
-        </div>
+        </section>
+      )}
+
+      {related.data && related.data.length === 0 && (
+        <EmptyState icon={FileEdit} title={t('article.related')} hint={t('article.noRelatedHint')} />
       )}
 
       <SubmitReviewDialog kbId={kbId} articleId={articleId} open={submitOpen} onClose={() => setSubmitOpen(false)} />
+      <ConfirmDialog
+        open={confirmDelete}
+        title={t('kb.delete')}
+        body={t('article.deleteConfirm', { title: a.title })}
+        confirmLabel={t('kb.delete')}
+        danger
+        pending={del.isPending}
+        onClose={() => setConfirmDelete(false)}
+        onConfirm={() => void onDelete()}
+      />
     </section>
   );
 }

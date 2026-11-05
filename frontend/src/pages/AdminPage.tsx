@@ -1,12 +1,24 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { Activity, Search, ShieldCheck, UserPlus } from 'lucide-react';
 import { t } from '../i18n';
 import { toApiMessage } from '../shared/lib/api-client';
+import { useToast } from '../shared/ui/Toast';
+import { PageHeader } from '../shared/ui/Chrome';
+import { Button } from '../shared/ui/Button';
+import { Dialog } from '../shared/ui/Dialog';
+import { Field, Select, TextInput } from '../shared/ui/Field';
+import { Badge } from '../shared/ui/Badge';
+import { EmptyState, InlineError, Skeleton } from '../shared/ui/Feedback';
+import { Avatar } from '../shared/ui/Chrome';
 import { useInviteUser, useMe, useUpdateUser, useUsers } from '../features/auth/hooks';
+import { formatFaDate } from '../shared/lib/format-fa';
 
 export function AdminPage(): JSX.Element {
   const me = useMe();
+  const toast = useToast();
   const [search, setSearch] = useState('');
+  const [inviteOpen, setInviteOpen] = useState(false);
   const users = useUsers(search);
   const invite = useInviteUser();
   const update = useUpdateUser();
@@ -16,144 +28,165 @@ export function AdminPage(): JSX.Element {
 
   async function onInvite(e: React.FormEvent): Promise<void> {
     e.preventDefault();
-    await invite.mutateAsync(form);
-    setForm({ fullName: '', email: '', password: '', role: 'member' });
+    try {
+      await invite.mutateAsync(form);
+      toast.success(t('admin.invitedToast'));
+      setForm({ fullName: '', email: '', password: '', role: 'member' });
+      setInviteOpen(false);
+    } catch (err) {
+      toast.error(toApiMessage(err, t('common.error')));
+    }
+  }
+
+  async function onToggleActive(id: string, next: boolean): Promise<void> {
+    try {
+      await update.mutateAsync({ id, input: { isActive: next } });
+      toast.success(t('common.savedToast'));
+    } catch (err) {
+      toast.error(toApiMessage(err, t('common.error')));
+    }
   }
 
   return (
-    <section className="space-y-6">
-      <h1 className="text-2xl font-bold">{t('admin.title')}</h1>
+    <section className="space-y-5">
+      <PageHeader
+        title={t('admin.title')}
+        description={t('admin.desc')}
+        actions={
+          isAdmin ? (
+            <>
+              <Link to="/activity" className="btn-secondary btn-sm">
+                <Activity size={15} />
+                {t('activity.title')}
+              </Link>
+              <Button variant="primary" size="sm" onClick={() => setInviteOpen(true)}>
+                <UserPlus size={15} />
+                {t('admin.invite')}
+              </Button>
+            </>
+          ) : undefined
+        }
+      />
 
       {!me.isPending && !isAdmin && (
-        <div className="rounded-2xl border border-amber-300 bg-amber-50 p-5 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+        <div className="surface flex items-center gap-2.5 border-amber-300 bg-amber-50/60 p-4 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+          <ShieldCheck size={17} className="shrink-0" />
           {t('admin.forbidden')}
         </div>
       )}
 
       {isAdmin && (
-        <>
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="text-sm font-semibold">{t('activity.title')}</h2>
-              <Link to="/activity" className="text-sm font-medium text-brand-600 hover:underline">
-                {t('activity.title')} ←
-              </Link>
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-            <h2 className="text-sm font-semibold">{t('admin.invite')}</h2>
-            <form onSubmit={(e) => void onInvite(e)} className="mt-4 grid gap-3 sm:grid-cols-2">
-              <input
-                value={form.fullName}
-                onChange={(e) => setForm({ ...form, fullName: e.target.value })}
-                placeholder={t('auth.fullName')}
-                required
-                className="rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950"
-              />
-              <input
-                value={form.email}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
-                placeholder={t('auth.email')}
-                type="email"
-                dir="ltr"
-                required
-                className="rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950"
-              />
-              <input
-                value={form.password}
-                onChange={(e) => setForm({ ...form, password: e.target.value })}
-                placeholder={t('auth.password')}
-                type="password"
-                dir="ltr"
-                required
-                minLength={8}
-                className="rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950"
-              />
-              <select
-                value={form.role}
-                onChange={(e) => setForm({ ...form, role: e.target.value as 'org-admin' | 'member' })}
-                className="rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950"
-              >
-                <option value="member">{t('roles.member')}</option>
-                <option value="org-admin">{t('roles.orgAdmin')}</option>
-              </select>
-              <div className="sm:col-span-2">
-                {invite.isError && (
-                  <p className="mb-2 text-sm text-red-600">{toApiMessage(invite.error, t('common.error'))}</p>
-                )}
-                <button
-                  type="submit"
-                  disabled={invite.isPending}
-                  className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-                >
-                  {t('admin.inviteSubmit')}
-                </button>
-              </div>
-            </form>
-          </div>
-
-          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-            <div className="border-b border-slate-200 p-4 dark:border-slate-800">
-              <input
+        <div className="surface overflow-hidden">
+          <div className="hairline-b p-4">
+            <div className="relative max-w-xs">
+              <Search size={15} className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <TextInput
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder={t('admin.search')}
-                className="w-full max-w-xs rounded-lg border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-950"
+                aria-label={t('admin.search')}
+                className="ps-9"
               />
             </div>
-            {users.isPending && <p className="p-6 text-sm text-slate-500">{t('common.loading')}</p>}
-            {users.isError && (
-              <p className="p-6 text-sm text-red-600">{toApiMessage(users.error, t('common.error'))}</p>
-            )}
-            {users.data && users.data.data.length === 0 && (
-              <p className="p-6 text-sm text-slate-500">{t('common.empty')}</p>
-            )}
-            {users.data && users.data.data.length > 0 && (
-              <table className="w-full text-sm">
+          </div>
+          {users.isPending && (
+            <div className="space-y-2.5 p-5">
+              <Skeleton className="h-10" />
+              <Skeleton className="h-10" />
+              <Skeleton className="h-10" />
+            </div>
+          )}
+          {users.isError && (
+            <div className="p-5">
+              <InlineError message={toApiMessage(users.error, t('common.error'))} onRetry={() => void users.refetch()} />
+            </div>
+          )}
+          {users.data && users.data.data.length === 0 && (
+            <EmptyState icon={Search} title={t('common.empty')} />
+          )}
+          {users.data && users.data.data.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="tbl min-w-[640px]">
                 <thead>
-                  <tr className="border-b border-slate-200 text-slate-500 dark:border-slate-800">
-                    <th className="px-4 py-2 text-right font-medium">{t('auth.fullName')}</th>
-                    <th className="px-4 py-2 text-right font-medium">{t('auth.email')}</th>
-                    <th className="px-4 py-2 text-right font-medium">{t('admin.role')}</th>
-                    <th className="px-4 py-2 text-right font-medium">{t('admin.status')}</th>
-                    <th className="px-4 py-2" />
+                  <tr>
+                    <th>{t('auth.fullName')}</th>
+                    <th>{t('auth.email')}</th>
+                    <th>{t('admin.role')}</th>
+                    <th>{t('admin.status')}</th>
+                    <th>{t('admin.memberSince')}</th>
+                    <th><span className="sr-only">actions</span></th>
                   </tr>
                 </thead>
                 <tbody>
                   {users.data.data.map((row) => (
-                    <tr key={row.user.id} className="border-b border-slate-100 last:border-0 dark:border-slate-800">
-                      <td className="px-4 py-2">{row.user.fullName}</td>
-                      <td dir="ltr" className="px-4 py-2 text-left">{row.user.email}</td>
-                      <td className="px-4 py-2">
-                        {row.role === 'org-admin' ? t('roles.orgAdmin') : t('roles.member')}
+                    <tr key={row.user.id}>
+                      <td>
+                        <span className="flex items-center gap-2.5">
+                          <Avatar name={row.user.fullName} size="sm" />
+                          <span className="font-medium">{row.user.fullName}</span>
+                        </span>
                       </td>
-                      <td className="px-4 py-2">
-                        {row.user.isActive ? t('admin.active') : t('admin.inactive')}
+                      <td dir="ltr" className="text-left text-slate-500 dark:text-slate-400">{row.user.email}</td>
+                      <td>
+                        <Badge tone={row.role === 'org-admin' ? 'blue' : 'slate'} dot={false}>
+                          {row.role === 'org-admin' ? t('roles.orgAdmin') : t('roles.member')}
+                        </Badge>
                       </td>
-                      <td className="px-4 py-2 text-left">
-                        <button
-                          type="button"
+                      <td>
+                        <Badge tone={row.user.isActive ? 'green' : 'slate'}>
+                          {row.user.isActive ? t('admin.active') : t('admin.inactive')}
+                        </Badge>
+                      </td>
+                      <td className="meta whitespace-nowrap">{formatFaDate(row.memberSince)}</td>
+                      <td className="text-end">
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           disabled={update.isPending}
-                          onClick={() =>
-                            void update.mutateAsync({
-                              id: row.user.id,
-                              input: { isActive: !row.user.isActive },
-                            })
-                          }
-                          className="rounded-lg border border-slate-300 px-2 py-1 text-xs dark:border-slate-700"
+                          onClick={() => void onToggleActive(row.user.id, !row.user.isActive)}
                         >
                           {row.user.isActive ? t('admin.deactivate') : t('admin.activate')}
-                        </button>
+                        </Button>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            )}
-          </div>
-        </>
+            </div>
+          )}
+        </div>
       )}
+
+      <Dialog open={inviteOpen} title={t('admin.invite')} description={t('admin.inviteDesc')} onClose={() => setInviteOpen(false)}>
+        <form onSubmit={(e) => void onInvite(e)} className="space-y-4" noValidate>
+          <Field label={t('auth.fullName')}>
+            <TextInput value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} required autoComplete="name" />
+          </Field>
+          <Field label={t('auth.email')}>
+            <TextInput value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} type="email" dir="ltr" required autoComplete="email" />
+          </Field>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label={t('auth.password')}>
+              <TextInput value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} type="password" dir="ltr" required minLength={8} autoComplete="new-password" />
+            </Field>
+            <Field label={t('admin.role')}>
+              <Select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as 'org-admin' | 'member' })}>
+                <option value="member">{t('roles.member')}</option>
+                <option value="org-admin">{t('roles.orgAdmin')}</option>
+              </Select>
+            </Field>
+          </div>
+          {invite.isError && <p className="form-error">{toApiMessage(invite.error, t('common.error'))}</p>}
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setInviteOpen(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button type="submit" variant="primary" disabled={invite.isPending}>
+              {t('admin.inviteSubmit')}
+            </Button>
+          </div>
+        </form>
+      </Dialog>
     </section>
   );
 }

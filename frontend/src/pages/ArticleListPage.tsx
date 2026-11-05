@@ -1,14 +1,25 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { FileText, Plus, Search, Trash2 } from 'lucide-react';
 import { t } from '../i18n';
 import { toApiMessage } from '../shared/lib/api-client';
+import { useToast } from '../shared/ui/Toast';
+import { PageHeader } from '../shared/ui/Chrome';import { Button } from '../shared/ui/Button';
+import { ConfirmDialog } from '../shared/ui/Dialog';
+import { Select, TextInput } from '../shared/ui/Field';
+import { Badge, TagChip } from '../shared/ui/Badge';
+import { EmptyState, InlineError, Skeleton } from '../shared/ui/Feedback';
 import { useKb } from '../features/knowledge-bases/hooks';
 import { useArticles, useDeleteArticle, useKbTags } from '../features/articles/hooks';
+import { formatFaDate, formatFaNumber } from '../shared/lib/format-fa';
 
 const STATUS_OPTIONS = ['', 'draft', 'in_review', 'published', 'archived'];
 
+const statusTone = { draft: 'slate', in_review: 'amber', published: 'green', archived: 'blue' } as const;
+
 export function ArticleListPage(): JSX.Element {
   const { kbId = '' } = useParams();
+  const toast = useToast();
   const kb = useKb(kbId);
   const [status, setStatus] = useState('');
   const [search, setSearch] = useState('');
@@ -23,6 +34,7 @@ export function ArticleListPage(): JSX.Element {
   });
   const tags = useKbTags(kbId);
   const del = useDeleteArticle(kbId);
+  const [deleting, setDeleting] = useState<{ id: string; title: string } | null>(null);
 
   const role = kb.data?.role ?? null;
   const canWrite = role === 'manager' || role === 'contributor' || role === 'org-admin';
@@ -35,107 +47,151 @@ export function ArticleListPage(): JSX.Element {
     archived: t('article.status_archived'),
   };
 
+  async function onDelete(): Promise<void> {
+    if (!deleting) return;
+    try {
+      await del.mutateAsync(deleting.id);
+      toast.success(t('article.deletedToast'));
+      setDeleting(null);
+    } catch (err) {
+      toast.error(toApiMessage(err, t('common.error')));
+    }
+  }
+
   return (
-    <section className="mx-auto max-w-4xl space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <Link to={`/kbs/${kbId}`} className="text-sm text-brand-600 underline">
-            {t('kb.backToList')}
-          </Link>
-          <h1 className="mt-1 text-2xl font-bold">{t('article.listTitle')}</h1>
-        </div>
-        {canWrite && (
-          <Link
-            to={`/kbs/${kbId}/articles/new`}
-            className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white"
-          >
-            {t('article.create')}
-          </Link>
-        )}
-      </div>
+    <section className="mx-auto max-w-4xl space-y-5">
+      <PageHeader
+        title={t('article.listTitle')}
+        description={kb.data?.title}
+        breadcrumbs={[
+          { label: t('nav.knowledgeBases'), to: '/kbs' },
+          ...(kb.data ? [{ label: kb.data.title, to: `/kbs/${kbId}` }] : []),
+          { label: t('article.listTitle') },
+        ]}
+        actions={
+          canWrite ? (
+            <Link to={`/kbs/${kbId}/articles/new`} className="btn-primary btn-sm">
+              <Plus size={15} />
+              {t('article.create')}
+            </Link>
+          ) : undefined
+        }
+      />
 
       <form
         onSubmit={(e) => {
           e.preventDefault();
           setAppliedSearch(search);
         }}
-        className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900"
+        className="surface flex flex-wrap items-center gap-2 p-3"
+        role="search"
       >
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder={t('article.searchPh')}
-          className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-950"
-        />
-        <select
-          value={status}
-          onChange={(e) => setStatus(e.target.value)}
-          className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-950"
-        >
+        <div className="relative min-w-0 flex-1 basis-48">
+          <Search size={15} className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <TextInput
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t('article.searchPh')}
+            aria-label={t('article.searchPh')}
+            className="ps-9"
+          />
+        </div>
+        <Select value={status} onChange={(e) => setStatus(e.target.value)} className="w-auto" aria-label={t('article.allStatuses')}>
           {STATUS_OPTIONS.map((s) => (
             <option key={s} value={s}>
               {s === '' ? t('article.allStatuses') : (statusLabel[s] ?? s)}
             </option>
           ))}
-        </select>
-        <select
-          value={tag}
-          onChange={(e) => setTag(e.target.value)}
-          className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-950"
-        >
+        </Select>
+        <Select value={tag} onChange={(e) => setTag(e.target.value)} className="w-auto" aria-label={t('article.allTags')}>
           <option value="">{t('article.allTags')}</option>
           {(tags.data ?? []).map((tg) => (
             <option key={tg.id} value={tg.slug}>
-              {tg.name} ({tg.articleCount})
+              {tg.name} ({formatFaNumber(tg.articleCount)})
             </option>
           ))}
-        </select>
-        <button
-          type="submit"
-          className="rounded-lg border border-slate-300 px-4 py-1.5 text-sm dark:border-slate-700"
-        >
+        </Select>
+        <Button type="submit" variant="secondary" size="sm">
           {t('article.searchBtn')}
-        </button>
+        </Button>
       </form>
 
-      {list.isPending && <p className="text-sm text-slate-500">{t('common.loading')}</p>}
-      {list.isError && <p className="text-sm text-red-600">{toApiMessage(list.error, t('common.error'))}</p>}
-      {list.data && list.data.items.length === 0 && <p className="text-sm text-slate-500">{t('common.empty')}</p>}
+      {list.isPending && (
+        <div className="space-y-2.5">
+          <Skeleton className="h-20" />
+          <Skeleton className="h-20" />
+          <Skeleton className="h-20" />
+        </div>
+      )}
+      {list.isError && <InlineError message={toApiMessage(list.error, t('common.error'))} onRetry={() => void list.refetch()} />}
+      {list.data && list.data.items.length === 0 && (
+        <div className="surface">
+          <EmptyState
+            icon={FileText}
+            title={t('article.emptyTitle')}
+            hint={t('article.emptyHint')}
+            action={
+              canWrite ? (
+                <Link to={`/kbs/${kbId}/articles/new`} className="btn-primary btn-sm">
+                  <Plus size={15} />
+                  {t('article.create')}
+                </Link>
+              ) : undefined
+            }
+          />
+        </div>
+      )}
       {list.data && list.data.items.length > 0 && (
-        <ul className="space-y-3">
+        <ul className="surface divide-y overflow-hidden" style={{ borderColor: 'var(--line)' }}>
           {list.data.items.map((a) => (
-            <li
-              key={a.id}
-              className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <Link to={`/kbs/${kbId}/articles/${a.slug}`} className="font-semibold hover:underline">
+            <li key={a.id} className="group flex items-start gap-3 px-5 py-4 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/40">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Link to={`/kbs/${kbId}/articles/${a.slug}`} className="truncate text-[15px] font-bold hover:text-brand-700 dark:hover:text-brand-200">
                     {a.title}
                   </Link>
-                  <p className="mt-1 text-xs text-slate-500">
-                    <span dir="ltr">{a.slug}</span> · {statusLabel[a.status] ?? a.status} · v{a.version}
-                  </p>
-                  {a.summary && <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{a.summary}</p>}
-                  {a.tagNames.length > 0 && (
-                    <p className="mt-2 text-xs text-slate-500">{a.tagNames.join('، ')}</p>
-                  )}
+                  <Badge tone={statusTone[a.status as keyof typeof statusTone] ?? 'slate'}>
+                    {statusLabel[a.status] ?? a.status}
+                  </Badge>
                 </div>
-                {canManage && (
-                  <button
-                    type="button"
-                    disabled={del.isPending}
-                    onClick={() => void del.mutateAsync(a.id)}
-                    className="rounded border border-red-300 px-2 py-0.5 text-xs text-red-600 dark:border-red-900"
-                  >
-                    {t('kb.delete')}
-                  </button>
+                {a.summary && <p className="mt-1 line-clamp-2 text-[13px] leading-6 text-slate-500 dark:text-slate-400">{a.summary}</p>}
+                <p className="meta mt-1.5">
+                  {t('article.versionLabel', { version: formatFaNumber(a.version) })} · {formatFaDate(a.updatedAt)}
+                </p>
+                {a.tagNames.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {a.tagNames.map((tagName) => (
+                      <TagChip key={tagName}>{tagName}</TagChip>
+                    ))}
+                  </div>
                 )}
               </div>
+              {canManage && (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="shrink-0 text-slate-400 opacity-0 hover:text-rose-600 focus:opacity-100 group-hover:opacity-100 dark:hover:text-rose-400"
+                  onClick={() => setDeleting({ id: a.id, title: a.title })}
+                  aria-label={t('kb.delete')}
+                  title={t('kb.delete')}
+                >
+                  <Trash2 size={15} />
+                </Button>
+              )}
             </li>
           ))}
         </ul>
       )}
+      <ConfirmDialog
+        open={deleting !== null}
+        title={t('kb.delete')}
+        body={t('article.deleteConfirm', { title: deleting?.title ?? '' })}
+        confirmLabel={t('kb.delete')}
+        danger
+        pending={del.isPending}
+        onClose={() => setDeleting(null)}
+        onConfirm={() => void onDelete()}
+      />
     </section>
   );
 }

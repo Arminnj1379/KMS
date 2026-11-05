@@ -16,7 +16,8 @@
 | 6 Approval Workflow | ✅ | Backend: review state machine (submit/approve/reject/cancel) + history + notifications seam. Frontend: review inbox + article submit/banner/history. |
 | 7 Search | ✅ | Backend: `GET /search` ($text + regex fallback, KB/org-scoped) + globalSearch façade. Frontend: search page + filters + pagination. |
 | 8 Notifications & Audit | ✅ | — |
-| 9 Polish & Prod-readiness | ⬜ | — |
+| 9 Polish & Prod-readiness | 🟡 | Backend gates green through Phase 8; DEPLOYMENT.md + index review remain. |
+| UI modernization (frontend-only redesign) | ✅ | See entry below — no API/backend changes. |
 
 ## Phase 0 — completed work
 - Inspected `E:\Najafi\KMS` (empty, not a git repo, no AGENTS.md/README).
@@ -114,6 +115,15 @@
   - `tsc --noEmit` clean (api+web); backend `eslint` clean; `nest build` + `vite build` pass (bundle ~750kB, code-split still deferred to Phase 9).
   - live smoke vs local Mongo + `STORAGE_DRIVER=local` (port 3001, 36 checks): ready / register / me / kb / invite + login / member-add / draft-create / submit→reviewer-inbox(1 unread, type) / unread-count-1 / mark-read / unread-count-0 / approve→admin-notified / read-all / admin-unread-0 / foreign-read-404 / no-token-401 / second-article + direct-publish + history-row-present / audit-200 with all 6 key actions / action-filter / reviewer-403 / audit-no-token-401 / second-org register + empty-inbox + audit-isolation. First-run green.
 - Debt: audit is warn-and-swallow by design (not billing-grade; monitor the service warning); inbox/notification titles snapshotted at emit time (may go stale on rename, same as review inbox); frontend bundle ~750kB (Tiptap; code-split deferred to Phase 9); `scripts/smoke-phase8.ps1` kept ASCII-only (PS5.1 BOM-less UTF-8 Persian misparse). Test data left in dev Mongo only (`p8*` orgs/users/KBs/articles/notifications/audits). Next: Phase 9 Polish & Prod-readiness.
+
+## UI modernization — completed 2026-11-05 ✅ (frontend only; no backend changes)
+- Design system: refined lapis-blue `brand` ramp + paper/ink neutrals, Vazirmatn-only type scale, radius system (card 10px / control 8px), `surface/btn/input/badge/tbl/skeleton/kms-prose/tiptap` component classes in `index.css` (light + dark via CSS vars), Lucide icons everywhere (emoji/glyph toolbar buttons retired), `focus-visible` rings + `prefers-reduced-motion` support.
+- New `shared/ui` primitives: `Button`, `Field` (label/error/input/select/textarea), `Badge`/`TagChip`, `Dialog`/`ConfirmDialog` (Esc/backdrop, success/error toasts` + header search (navigates to `/search?q=`), bell, theme toggle, desktop collapsible sidebar (264px → 76px rail, persisted) + mobile drawer, user card with logout.
+- Pages: split-screen auth layout; dashboard with live stats (KBs, my pending reviews, unread, backend status) + review/KB previews; KB list dialog-create + cards; KB detail with breadcrumbs/stats/categories/members-table/invite + confirm-delete; article list with filter bar + hover delete; reading view (summary lede, tags, action bar, prose body, attachments/history/pending/reviews/related); editor with icon toolbar, autosave status pill, sticky action bar; search adopts `?q=` + skeleton/empty states; reviews/notifications/activity/admin/profile/404 rebuilt on the same primitives (skeletons, toasts, confirm dialogs, role badges, responsive tables).
+- Perf: Tiptap routes code-split (`React.lazy`); entry chunk 809kB → 307kB + shared async chunk.
+- Verification: `tsc --noEmit` clean, `vite build` pass, served `dist` via `vite preview` (200 + correct chunks/title), backend API smoke re-run **36/36** (untouched API intact). No fake UI — dashboard/stats all live queries; org switcher deliberately not built (backend pins callers to first membership).
+- Debt: smoke scripts + console remain ASCII-only (PS5.1 Persian console rendering); admin users table is plain (filters/sort deferred); notification type labels stay hardcoded fa (server sends codes).
+
 - [ ] Root: `docker-compose.yml`, `.env.example`, `.gitignore`, `README.md`, `package.json` (workspaces).
 - [ ] Backend scaffold + strict TS + lint + env + logging + filters + health + swagger + Prisma schema/seed.
 - [ ] Frontend scaffold + Tailwind + Router + Query + i18n + AppShell.

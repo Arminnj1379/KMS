@@ -1,13 +1,12 @@
 import { QueryClientProvider } from '@tanstack/react-query';
-import { useMemo } from 'react';
+import { Suspense, lazy, useMemo } from 'react';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { RequireAuth } from './features/auth/RequireAuth';
+import { ToastProvider } from './shared/ui/Toast';
 import { createQueryClient } from './app/query-client';
 import { ActivityPage } from './pages/ActivityPage';
 import { AdminPage } from './pages/AdminPage';
-import { ArticleEditorPage } from './pages/ArticleEditorPage';
 import { ArticleListPage } from './pages/ArticleListPage';
-import { ArticleViewPage } from './pages/ArticleViewPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { KbDetailPage } from './pages/KbDetailPage';
 import { KbListPage } from './pages/KbListPage';
@@ -20,10 +19,30 @@ import { ReviewInboxPage } from './pages/ReviewInboxPage';
 import { SearchPage } from './pages/SearchPage';
 import { AppShell } from './shared/layout/AppShell';
 
+// Tiptap is the heaviest dependency — split the two routes that render it.
+const ArticleEditorPage = lazy(() =>
+  import('./pages/ArticleEditorPage').then((m) => ({ default: m.ArticleEditorPage })),
+);
+const ArticleViewPage = lazy(() =>
+  import('./pages/ArticleViewPage').then((m) => ({ default: m.ArticleViewPage })),
+);
+
+function RouteFallback(): JSX.Element {
+  return (
+    <div className="mx-auto max-w-3xl space-y-3 py-8" aria-label="loading">
+      <div className="skeleton h-8 w-2/5" />
+      <div className="surface p-8">
+        <div className="skeleton h-48" />
+      </div>
+    </div>
+  );
+}
+
 export default function App(): JSX.Element {
   const client = useMemo(() => createQueryClient(), []);
   return (
     <QueryClientProvider client={client}>
+      <ToastProvider>
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
@@ -34,9 +53,9 @@ export default function App(): JSX.Element {
               <Route path="/kbs" element={<KbListPage />} />
               <Route path="/kbs/:id" element={<KbDetailPage />} />
               <Route path="/kbs/:kbId/articles" element={<ArticleListPage />} />
-              <Route path="/kbs/:kbId/articles/new" element={<ArticleEditorPage />} />
-              <Route path="/kbs/:kbId/articles/:articleId" element={<ArticleViewPage />} />
-              <Route path="/kbs/:kbId/articles/:articleId/edit" element={<ArticleEditorPage />} />
+              <Route path="/kbs/:kbId/articles/new" element={<Suspense fallback={<RouteFallback />}><ArticleEditorPage /></Suspense>} />
+              <Route path="/kbs/:kbId/articles/:articleId" element={<Suspense fallback={<RouteFallback />}><ArticleViewPage /></Suspense>} />
+              <Route path="/kbs/:kbId/articles/:articleId/edit" element={<Suspense fallback={<RouteFallback />}><ArticleEditorPage /></Suspense>} />
               <Route path="/reviews" element={<ReviewInboxPage />} />
               <Route path="/notifications" element={<NotificationsPage />} />
               <Route path="/activity" element={<ActivityPage />} />
@@ -48,6 +67,7 @@ export default function App(): JSX.Element {
           </Route>
         </Routes>
       </BrowserRouter>
+      </ToastProvider>
     </QueryClientProvider>
   );
 }

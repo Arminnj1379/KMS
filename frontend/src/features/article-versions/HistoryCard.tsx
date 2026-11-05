@@ -1,6 +1,12 @@
 import { useState } from 'react';
+import { GitCompare, History, RotateCcw } from 'lucide-react';
 import { t } from '../../i18n';
 import { toApiMessage } from '../../shared/lib/api-client';
+import { useToast } from '../../shared/ui/Toast';
+import { Button } from '../../shared/ui/Button';
+import { Select, TextInput } from '../../shared/ui/Field';
+import { ConfirmDialog } from '../../shared/ui/Dialog';
+import { formatFaDate, formatFaNumber } from '../../shared/lib/format-fa';
 import { useSnapshotVersion, useRestoreVersion, useVersionDiff, useVersionDetail, useVersions } from './hooks';
 
 export function HistoryCard({
@@ -15,160 +21,150 @@ export function HistoryCard({
   const list = useVersions(kbId, articleId);
   const snapshot = useSnapshotVersion(kbId, articleId);
   const restore = useRestoreVersion(kbId, articleId);
+  const toast = useToast();
   const [selected, setSelected] = useState<number | null>(null);
   const [diffFrom, setDiffFrom] = useState<number | null>(null);
   const [diffTo, setDiffTo] = useState<number | null>(null);
   const [changelog, setChangelog] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [restoring, setRestoring] = useState<number | null>(null);
   const detail = useVersionDetail(kbId, articleId, selected);
   const diff = useVersionDiff(kbId, articleId, diffFrom, diffTo);
 
   async function onSnapshot(): Promise<void> {
-    setError(null);
     try {
       await snapshot.mutateAsync(changelog.trim() || undefined);
+      toast.success(t('version.snapshotToast'));
       setChangelog('');
     } catch (err) {
-      setError(toApiMessage(err, t('common.error')));
+      toast.error(toApiMessage(err, t('common.error')));
     }
   }
 
   async function onRestore(version: number): Promise<void> {
-    setError(null);
     try {
       await restore.mutateAsync({ version, changelog: changelog.trim() || undefined });
+      toast.success(t('version.restoredToast'));
+      setRestoring(null);
     } catch (err) {
-      setError(toApiMessage(err, t('common.error')));
+      toast.error(toApiMessage(err, t('common.error')));
     }
   }
 
   const versions = list.data ?? [];
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-      <h2 className="text-sm font-semibold">{t('version.title')}</h2>
+    <section className="surface overflow-hidden" aria-label={t('version.title')}>
+      <div className="hairline-b flex items-center gap-2 px-5 py-3.5">
+        <History size={16} className="text-slate-400" />
+        <h2 className="section-title">{t('version.title')}</h2>
+      </div>
+      <div className="space-y-4 p-5">
+        {canWrite && (
+          <div className="flex gap-2">
+            <TextInput
+              value={changelog}
+              onChange={(e) => setChangelog(e.target.value)}
+              placeholder={t('version.changelogPh')}
+              maxLength={200}
+              aria-label={t('version.changelogPh')}
+            />
+            <Button variant="secondary" disabled={snapshot.isPending} onClick={() => void onSnapshot()} className="shrink-0">
+              {t('version.snapshot')}
+            </Button>
+          </div>
+        )}
 
-      {canWrite && (
-        <div className="mt-3 flex gap-2">
-          <input
-            value={changelog}
-            onChange={(e) => setChangelog(e.target.value)}
-            placeholder={t('version.changelogPh')}
-            maxLength={200}
-            className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-950"
-          />
-          <button
-            type="button"
-            disabled={snapshot.isPending}
-            onClick={() => void onSnapshot()}
-            className="shrink-0 rounded-lg bg-brand-500 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-60"
-          >
-            {t('version.snapshot')}
-          </button>
-        </div>
-      )}
+        {list.isPending && <p className="meta">{t('common.loading')}</p>}
+        {list.isError && <p className="text-sm text-rose-600">{toApiMessage(list.error, t('common.error'))}</p>}
+        {list.data && versions.length === 0 && <p className="meta">{t('version.empty')}</p>}
 
-      {list.isPending && <p className="mt-3 text-sm text-slate-500">{t('common.loading')}</p>}
-      {list.isError && <p className="mt-3 text-sm text-red-600">{toApiMessage(list.error, t('common.error'))}</p>}
-      {list.data && versions.length === 0 && (
-        <p className="mt-3 text-sm text-slate-500">{t('version.empty')}</p>
-      )}
-
-      {versions.length > 0 && (
-        <ul className="mt-3 space-y-2">
-          {versions.map((v) => (
-            <li
-              key={v.id}
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <button
-                  type="button"
-                  onClick={() => setSelected(selected === v.version ? null : v.version)}
-                  className="font-semibold hover:underline"
-                >
-                  v{v.version} · {v.title}
-                </button>
-                {canWrite && (
+        {versions.length > 0 && (
+          <ol className="relative space-y-0 border-s ps-0" style={{ borderColor: 'var(--line)' }}>
+            {versions.map((v) => (
+              <li key={v.id} className="relative pb-4 ps-5 last:pb-0">
+                <span className="absolute start-0 top-1.5 h-2 w-2 -translate-x-1/2 rounded-full bg-brand-400 ring-4 ring-brand-50 dark:bg-brand-500 dark:ring-brand-950" aria-hidden />
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                   <button
                     type="button"
-                    disabled={restore.isPending}
-                    onClick={() => void onRestore(v.version)}
-                    className="shrink-0 rounded-lg border border-slate-300 px-3 py-1 text-xs dark:border-slate-700"
+                    onClick={() => setSelected(selected === v.version ? null : v.version)}
+                    className="text-sm font-bold hover:text-brand-700 dark:hover:text-brand-200"
+                    aria-expanded={selected === v.version}
                   >
-                    {t('version.restore')}
+                    {t('article.versionLabel', { version: formatFaNumber(v.version) })} · {v.title}
                   </button>
-                )}
-              </div>
-              {v.changelog && <p className="mt-1 text-xs text-slate-500">{v.changelog}</p>}
-              {selected === v.version && (
-                <div className="mt-2 border-t border-slate-200 pt-2 text-xs dark:border-slate-700">
-                  {detail.isPending && <p className="text-slate-500">{t('common.loading')}</p>}
-                  {detail.data && (
-                    <p className="whitespace-pre-wrap text-slate-600 dark:text-slate-300">
-                      {detail.data.contentText || t('common.empty')}
-                    </p>
+                  {canWrite && (
+                    <Button variant="ghost" size="sm" disabled={restore.isPending} onClick={() => setRestoring(v.version)} className="h-6 px-2 text-xs">
+                      <RotateCcw size={13} />
+                      {t('version.restore')}
+                    </Button>
                   )}
                 </div>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
+                <p className="meta mt-0.5">
+                  {v.changelog ? `${v.changelog} · ` : ''}{formatFaDate(v.createdAt)}
+                </p>
+                {selected === v.version && (
+                  <div className="mt-2 rounded-control bg-slate-50 px-3 py-2 text-[13px] leading-7 text-slate-600 dark:bg-slate-800/60 dark:text-slate-300">
+                    {detail.isPending && <p className="meta">{t('common.loading')}</p>}
+                    {detail.data && <p className="whitespace-pre-wrap">{detail.data.contentText || t('common.empty')}</p>}
+                  </div>
+                )}
+              </li>
+            ))}
+          </ol>
+        )}
 
-      {versions.length >= 2 && (
-        <div className="mt-4 border-t border-slate-200 pt-3 dark:border-slate-700">
-          <p className="text-sm font-semibold">{t('version.diffTitle')}</p>
-          <div className="mt-2 flex items-center gap-2 text-sm">
-            <select
-              value={diffFrom ?? ''}
-              onChange={(e) => setDiffFrom(e.target.value === '' ? null : Number(e.target.value))}
-              className="rounded-lg border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-950"
-            >
-              <option value="">{t('version.from')}</option>
-              {versions.map((v) => (
-                <option key={v.id} value={v.version}>
-                  v{v.version}
-                </option>
-              ))}
-            </select>
-            <span>→</span>
-            <select
-              value={diffTo ?? ''}
-              onChange={(e) => setDiffTo(e.target.value === '' ? null : Number(e.target.value))}
-              className="rounded-lg border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-950"
-            >
-              <option value="">{t('version.to')}</option>
-              {versions.map((v) => (
-                <option key={v.id} value={v.version}>
-                  v{v.version}
-                </option>
-              ))}
-            </select>
-          </div>
-          {diff.data && (
-            <div className="mt-2 space-y-1 text-xs" dir="ltr">
-              {diff.data.titleChanged && <p className="font-semibold">{t('version.titleChanged')}</p>}
-              {diff.data.hunks.map((h, i) => (
-                <pre
-                  key={i}
-                  className={
-                    h.type === 'add'
-                      ? 'rounded bg-green-50 p-1 text-green-800 dark:bg-green-950 dark:text-green-200'
-                      : h.type === 'del'
-                        ? 'rounded bg-red-50 p-1 text-red-800 dark:bg-red-950 dark:text-red-200'
-                        : 'rounded bg-slate-50 p-1 text-slate-500 dark:bg-slate-800'
-                  }
-                >
-                  {h.lines.join('\n')}
-                </pre>
-              ))}
+        {versions.length >= 2 && (
+          <div className="rounded-control border p-3" style={{ borderColor: 'var(--line)' }}>
+            <p className="flex items-center gap-1.5 text-[13px] font-semibold">
+              <GitCompare size={14} className="text-slate-400" />
+              {t('version.diffTitle')}
+            </p>
+            <div className="mt-2 flex items-center gap-2">
+              <Select value={diffFrom ?? ''} onChange={(e) => setDiffFrom(e.target.value === '' ? null : Number(e.target.value))} className="h-8 py-1 text-xs" aria-label={t('version.from')}>
+                <option value="">{t('version.from')}</option>
+                {versions.map((v) => (
+                  <option key={v.id} value={v.version}>v{v.version}</option>
+                ))}
+              </Select>
+              <Select value={diffTo ?? ''} onChange={(e) => setDiffTo(e.target.value === '' ? null : Number(e.target.value))} className="h-8 py-1 text-xs" aria-label={t('version.to')}>
+                <option value="">{t('version.to')}</option>
+                {versions.map((v) => (
+                  <option key={v.id} value={v.version}>v{v.version}</option>
+                ))}
+              </Select>
             </div>
-          )}
-        </div>
-      )}
+            {diff.data && (
+              <div className="mt-2 space-y-1 text-xs" dir="ltr">
+                {diff.data.titleChanged && <p className="text-start font-semibold">{t('version.titleChanged')}</p>}
+                {diff.data.hunks.map((h, i) => (
+                  <pre
+                    key={i}
+                    className={
+                      h.type === 'add'
+                        ? 'rounded bg-emerald-50 p-1.5 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200'
+                        : h.type === 'del'
+                          ? 'rounded bg-rose-50 p-1.5 text-rose-800 dark:bg-rose-950 dark:text-rose-200'
+                          : 'rounded bg-slate-50 p-1.5 text-slate-500 dark:bg-slate-800'
+                    }
+                  >
+                    {h.lines.join('\n')}
+                  </pre>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
-      {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
-    </div>
+      <ConfirmDialog
+        open={restoring !== null}
+        title={t('version.restore')}
+        body={t('version.restoreConfirm', { version: restoring ?? '' })}
+        confirmLabel={t('version.restore')}
+        pending={restore.isPending}
+        onClose={() => setRestoring(null)}
+        onConfirm={() => restoring !== null && void onRestore(restoring)}
+      />
+    </section>
   );
 }
