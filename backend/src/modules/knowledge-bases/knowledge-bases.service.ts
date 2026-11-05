@@ -106,6 +106,49 @@ export class KnowledgeBasesService {
     return (member?.role as KbRoleName | undefined) ?? null;
   }
 
+  /**
+   * KB ids visible to the caller (org-scoped). Org-admin sees every KB;
+   * members see their memberships plus internal/public KBs. No counts —
+   * cheap scoping primitive for cross-KB search (direction: search → kbs).
+   */
+  async accessibleKbIds(orgId: string, userId: string, orgRole: string): Promise<Types.ObjectId[]> {
+    const orgObjectId = toObjectIdOrNull(orgId);
+    const userObjectId = toObjectIdOrNull(userId);
+    if (!orgObjectId || !userObjectId) return [];
+    if (orgRole === 'org-admin') {
+      const all = await this.kbModel.find({ organizationId: orgObjectId }, { _id: 1 }).lean();
+      return all.map((k) => k._id);
+    }
+    const [mine, open] = await Promise.all([
+      this.kbMemberModel.find({ userId: userObjectId }, { knowledgeBaseId: 1 }).lean(),
+      this.kbModel
+        .find({ organizationId: orgObjectId, visibility: { $in: ['internal', 'public'] } }, { _id: 1 })
+        .lean(),
+    ]);
+    // Memberships carry no orgId — constrain candidate KBs to this org.
+    const candidateIds = mine.map((m) => m.knowledgeBaseId);
+    const mineInOrg =
+      candidateIds.length === 0
+        ? []
+        : await this.kbModel
+            .find({ _id: { $in: candidateIds }, organizationId: orgObjectId }, { _id: 1 })
+            .lean();
+    const ids = new Map<string, Types.ObjectId>();
+    for (const k of mineInOrg) ids.set(k._id.toHexString(), k._id);
+    for (const k of open) ids.set(k._id.toHexString(), k._id);
+    return [...ids.values()];
+  }
+
+  /**
+   * Titles/slugs for a batch of KB ids (no access check — the caller
+   * already scoped them; used to label cross-KB search hits).
+   */
+  async titlesByIds(ids: Types.ObjectId[]): Promise<Map<string, { title: string; slug: string }>> {
+    if (ids.length === 0) return new Map();
+    const kbs = await this.kbModel.find({ _id: { $in: ids } }, { title: 1, slug: 1 }).lean();
+    return new Map(kbs.map((k) => [k._id.toHexString(), { title: k.title, slug: k.slug }]));
+  }
+
   private async kbDto(kb: {
     _id: Types.ObjectId;
     title: string;

@@ -117,7 +117,7 @@ Client: `POST /documents/upload-intent {filename,mime,size,articleId?}` → serv
 
 ## 9. Search Design (swap-ready)
 
-`SearchService` interface: `search(ctx, SearchQueryDto): Paginated<ArticleHit>`. MVP impl `MongoSearchService` uses a MongoDB text index on `articles(title, summary, contentText)` (language `none` — Persian has no stemmer; keyword matching) + regex fallback, scoped by KB membership. Elasticsearch/Atlas Search later = new provider behind same token, zero article-module changes.
+`SearchService` façade over `ArticlesService.globalSearch` (direction: search → articles → kbs). The Mongo provider (D-023): a MongoDB text index on `articles(title, summary, contentText)` (index `article_text`, `language none` — Persian has no stemmer; keyword matching) ordered by `$meta: textScore`, plus an escaped case-insensitive regex fallback over the same three fields when `$text` yields nothing or throws. Scoping is permission-first: `KnowledgeBasesService.accessibleKbIds` restricts every query to KBs visible to the caller (org-admin → all; members → memberships plus internal/public), intersected with `organizationId`; `kbId`/`status`/`tag` filters narrow further. Hits carry `kbTitle`/`kbSlug` plus a `snippetFor` window. Elasticsearch/Atlas Search later = a new provider behind the same controller, zero article-module changes.
 
 ## 10. Observability & Ops
 

@@ -154,5 +154,18 @@
     "status_approved": "Approved",
     "status_rejected": "Rejected",
     "status_cancelled": "Cancelled"
+  },
+  "search": {
+    "title": "Global search",
+    "placeholder": "Word or phrase (min 2 chars)…",
+    "minLength": "Type at least 2 characters",
+    "allKbs": "All knowledge bases",
+    "sort_relevance": "Most relevant",
+    "sort_newest": "Newest",
+    "sort_updated": "Recently updated",
+    "resultCount": "{count} results",
+    "fallbackNote": "approximate match",
+    "prev": "Previous",
+    "next": "Next"
   }
 }

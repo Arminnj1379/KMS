@@ -154,5 +154,18 @@
     "status_approved": "تأییدشده",
     "status_rejected": "ردشده",
     "status_cancelled": "لغوشده"
+  },
+  "search": {
+    "title": "جست‌وجوی سراسری",
+    "placeholder": "واژه یا عبارت (حداقل ۲ حرف)…",
+    "minLength": "حداقل ۲ حرف وارد کنید",
+    "allKbs": "همه پایگاه‌ها",
+    "sort_relevance": "مرتبط‌ترین",
+    "sort_newest": "جدیدترین",
+    "sort_updated": "آخرین ویرایش",
+    "resultCount": "{count} نتیجه",
+    "fallbackNote": "جست‌وجوی تقریبی",
+    "prev": "قبلی",
+    "next": "بعدی"
   }
 }

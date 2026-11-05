@@ -2,7 +2,7 @@
 
 > Updated after every phase (see task §10). Legend: ✅ done · 🟡 partial · ⬜ not started · 🛑 blocked.
 
-## Current: Phase 6 ✅ complete — next: Phase 7 Search
+## Current: Phase 7 ✅ complete — next: Phase 8 Notifications & Audit
 
 | Phase | Status | Notes |
 |---|---|---|
@@ -14,7 +14,7 @@
 | 4 Articles | ✅ | Backend: articles CRUD + optimistic 409 + tags + related + publish/archive state machine (org-isolated). Frontend: Tiptap editor + autosave + conflict dialog, list/view pages. |
 | 5 Documents & Versioning | ✅ | Backend: storage seam (s3/local) + documents intent/confirm + attachments + immutable versions + diff/restore. Frontend: attachments card + history card + changelog save. |
 | 6 Approval Workflow | ✅ | Backend: review state machine (submit/approve/reject/cancel) + history + notifications seam. Frontend: review inbox + article submit/banner/history. |
-| 7 Search | ⬜ | — |
+| 7 Search | ✅ | Backend: `GET /search` ($text + regex fallback, KB/org-scoped) + globalSearch façade. Frontend: search page + filters + pagination. |
 | 8 Notifications & Audit | ⬜ | — |
 | 9 Polish & Prod-readiness | ⬜ | — |
 
@@ -95,6 +95,15 @@
   - `tsc --noEmit` clean (api+web); backend `eslint` clean; `nest build` + `vite build` pass (bundle ~735kB, code-split still deferred to Phase 9).
   - live smoke vs local Mongo + `STORAGE_DRIVER=local` (port 3001, 40 checks): ready / register / kb / 4 invites + 4 logins / 3 member adds / draft-create / submit→in_review / resubmit-422 / stranger-approve-403 / approve→published / 2-row history / submit-published-422 / decide-settled-422 / reject→draft / cancel→draft / reader-submit-403 / self-review-422 / outsider-reviewer-422 / submit-a4 + archive + restore + resubmit-409 (true duplicate path) / reviewer+requester inboxes / manager-direct-publish regression / second-org register + cross-org-404 + empty-inbox. One app fix en route (`@HttpCode(200)` on action POSTs, matching articles-controller convention) + harness fixes (auth 10/min throttle → fewer logins, fresh identities per run).
 - Debt: direct manager transitions (publish/unpublish/…) don't write `workflow_history`/`audit_logs` (Phase 8 unification); notification rows not persisted yet (logging seam only); inbox titles snapshotted at submit (may go stale on rename); test data left in dev Mongo only (`p6*`/`p6d*` orgs/users/KBs/articles/requests). Next: Phase 7 Search.
+
+## Phase 7 — completed 2026-11-05 ✅
+- Backend `search` module (depends on articles → kbs, D-023): `GET /search` with `SearchQueryDto` (q min 2, status/kbId/tag filters, page/pageSize ≤50, sort relevance|newest|updated). Engine lives in `ArticlesService.globalSearch`: org + visible-KB scoping via new `KnowledgeBasesService.accessibleKbIds` (org-admin → all org KBs; members → memberships ∪ internal/public KBs, membership candidates re-constrained to the org since memberships carry no orgId) + `titlesByIds` for hit labels; `$text` first (index `article_text`, `language_override: none`, quote-sanitized, try/catch) ordered by `$meta: textScore`, regex fallback (escaped, case-insensitive over title/summary/contentText) only when `$text` yields zero rows or throws; hits carry the full article DTO + `kbTitle`/`kbSlug` + server-built `snippetFor` window (summary preferred, else match window). One guard added en route: DTO `@MinLength(2)` (single-char regex would match everything).
+- Frontend: `features/search` (api/hooks, React Query v5 `placeholderData`) + real `SearchPage` (debounced 300ms input, KB/status/sort filters, pagination, snippet + tag display, fallback-mode note, min-length/empty/error states); fa/en strings added.
+- Verification (all green, executed 2026-11-05):
+  - unit: **88/88** (7 new: blank-query empty without DB touch, no-visible-KB empty, text-hits relevance + KB labels + snippet + org/KB-scoped `$text` filter asserts, empty-`$text`→regex fallback, `$text`-error→regex instead of 500, kbId narrow + foreign-KB 404, unknown-tag empty + status passthrough).
+  - `tsc --noEmit` clean (api+web); backend `eslint` clean; `nest build` + `vite build` pass (bundle ~740kB, code-split still deferred to Phase 9).
+  - live smoke vs local Mongo + `STORAGE_DRIVER=local` (port 3001, 29 checks): ready / register / 2 KBs (internal+private) / 2 invites + 2 logins / 2 member adds / 3 published + 1 draft / exact-token keyword (mode=text) / affixed-token multi-hit / relevance ordering (two-term query ranks title-match first) / partial-token fallback (mode=regex) / single-hit isolation / status filter excludes draft / kbId filter / outsider sees internal-only (private hidden) / hit shape (kbTitle/kbSlug/snippet) / 1-char 400 / second-org register + cross-org empty. Harness-only fixes (PS5.1: BOM-less UTF-8 Persian misparse → BOM added; `write`-tool backslash-quote passthrough → stripped; stale identities → fresh prefix; smoke expectation corrected for exact-token `$text` semantics).
+- Debt: `$text` has no Persian stemmer — affixed forms (راهنما vs راهنمای) match only on exact token; fallback covers empty-`$text` cases but a non-empty text-hit short-circuits it (n-gram/edge-ngram index or query normalization is Phase 9 material). Snippet is a plain-text window (no `<mark>` highlights). Test data left in dev Mongo only (`p7*`/`p8*` orgs/users/KBs/articles). Next: Phase 8 Notifications & Audit.
 - [ ] Root: `docker-compose.yml`, `.env.example`, `.gitignore`, `README.md`, `package.json` (workspaces).
 - [ ] Backend scaffold + strict TS + lint + env + logging + filters + health + swagger + Prisma schema/seed.
 - [ ] Frontend scaffold + Tailwind + Router + Query + i18n + AppShell.

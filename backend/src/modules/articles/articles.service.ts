@@ -47,6 +47,24 @@ export function extractTextFromTiptap(node: unknown): string {
   return '';
 }
 
+/** Short match window for a search hit (summary preferred, else around the hit). */
+export function snippetFor(
+  a: { summary: string | null; contentText: string; title: string },
+  q: string,
+  window = 60,
+): string {
+  if (a.summary?.trim()) return a.summary.length > 200 ? `${a.summary.slice(0, 200)}…` : a.summary;
+  const text = a.contentText ?? '';
+  if (!text) return a.title;
+  const idx = text.toLowerCase().indexOf(q.toLowerCase());
+  if (idx < 0) return text.length > 200 ? `${text.slice(0, 200)}…` : text;
+  const start = Math.max(0, idx - window);
+  const end = Math.min(text.length, idx + q.length + window);
+  const prefix = start > 0 ? '…' : '';
+  const suffix = end < text.length ? '…' : '';
+  return `${prefix}${text.slice(start, end)}${suffix}`;
+}
+
 type AttachmentLinkLean = {
   documentId: Types.ObjectId;
   createdBy: Types.ObjectId;
@@ -620,5 +638,132 @@ export class ArticlesService {
       slug: t.slug,
       articleCount: countBy.get(t._id.toHexString()) ?? 0,
     }));
+  }
+
+  /**
+   * Cross-KB full-text search scoped to KBs visible to the caller.
+   * Strategy (ARCHITECTURE §9): MongoDB `$text` (index `article_text`,
+   * `language_override: none` — Persian has no stemmer) ordered by
+   * `$meta: textScore`; when `$text` yields nothing (partial tokens,
+   * stop-words-only, or operator syntax errors) fall back to a
+   * case-insensitive regex over title/summary/contentText.
+   * Exported for the search module (direction: search → articles → kbs).
+   */
+  async globalSearch(
+    orgId: string,
+    userId: string,
+    orgRole: string,
+    input: {
+      q: string;
+      status?: string;
+      kbId?: string;
+      tag?: string;
+      page?: number;
+      pageSize?: number;
+      sort?: 'relevance' | 'newest' | 'updated';
+    },
+  ) {
+    const q = input.q?.trim() ?? '';
+    const page = Math.max(1, input.page || 1);
+    const pageSize = Math.min(50, Math.max(1, input.pageSize || 20));
+    const empty = { items: [], total: 0, page, pageSize, mode: 'text' as const };
+    if (!q) return empty;
+    const orgObjectId = toObjectIdOrNull(orgId);
+    if (!orgObjectId) throw new NotFoundException('سازمان یافت نشد');
+
+    let scopeIds = await this.kbs.accessibleKbIds(orgId, userId, orgRole);
+    if (scopeIds.length === 0) return empty;
+    if (input.kbId) {
+      const access = await this.kbs.requireAccess(orgId, userId, orgRole, input.kbId);
+      if (!scopeIds.some((id) => id.equals(access.kbId))) throw new NotFoundException('پایگاه دانش یافت نشد');
+      scopeIds = [access.kbId];
+    }
+
+    const base: Record<string, unknown> = {
+      organizationId: orgObjectId,
+      knowledgeBaseId: { $in: scopeIds },
+      deletedAt: null,
+    };
+    if (input.status) base['status'] = input.status;
+    if (input.tag) {
+      const tag = await this.tagModel
+        .findOne({ organizationId: orgObjectId, slug: normalizeSlug(input.tag) })
+        .lean();
+      if (!tag) return empty;
+      base['tagIds'] = tag._id;
+    }
+
+    const fallbackSort: Record<string, 1 | -1> =
+      input.sort === 'newest' ? { createdAt: -1 } : { updatedAt: -1 };
+
+    // 1) Keyword path — textScore relevance ordering.
+    const sanitized = q.replace(/["']/g, ' ').trim();
+    if (sanitized) {
+      try {
+        const textFilter = { ...base, $text: { $search: sanitized } };
+        const [total, rows] = await Promise.all([
+          this.articleModel.countDocuments(textFilter),
+          this.articleModel
+            .find(textFilter, { score: { $meta: 'textScore' } })
+            .sort({ score: { $meta: 'textScore' } })
+            .skip((page - 1) * pageSize)
+            .limit(pageSize)
+            .lean(),
+        ]);
+        if ((rows as unknown[]).length > 0) {
+          return {
+            ...(await this.toHits(rows as unknown as ArticleLean[], q)),
+            total,
+            page,
+            pageSize,
+            mode: 'text' as const,
+          };
+        }
+      } catch {
+        // Operator syntax / missing index — fall through to regex.
+      }
+    }
+
+    // 2) Partial-token fallback — substring match for Persian affixes etc.
+    const rx = new RegExp(escapeRegExp(q), 'i');
+    const regexFilter = { ...base, $or: [{ title: rx }, { summary: rx }, { contentText: rx }] };
+    const [total, rows] = await Promise.all([
+      this.articleModel.countDocuments(regexFilter),
+      this.articleModel
+        .find(regexFilter)
+        .sort(fallbackSort)
+        .skip((page - 1) * pageSize)
+        .limit(pageSize)
+        .lean(),
+    ]);
+    return {
+      ...(await this.toHits(rows as unknown as ArticleLean[], q)),
+      total,
+      page,
+      pageSize,
+      mode: 'regex' as const,
+    };
+  }
+
+  /** Cross-KB hit DTOs: article fields + owning KB identity + match snippet. */
+  private async toHits(rows: ArticleLean[], q: string) {
+    const allTagIds = [...new Set(rows.flatMap((r) => r.tagIds.map((t) => t.toHexString())))].map(
+      (hex) => new Types.ObjectId(hex),
+    );
+    const [names, kbTitles] = await Promise.all([
+      this.tagNamesById(allTagIds),
+      this.kbs.titlesByIds(rows.map((r) => r.knowledgeBaseId)),
+    ]);
+    return {
+      items: rows.map((r) => {
+        const kb = kbTitles.get(r.knowledgeBaseId.toHexString());
+        return {
+          ...this.toDto(r, names),
+          kbTitle: kb?.title ?? '',
+          kbSlug: kb?.slug ?? r.knowledgeBaseId.toHexString(),
+          snippet: snippetFor(r, q),
+        };
+      }),
+    };
   }
 }
