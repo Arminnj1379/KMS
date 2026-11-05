@@ -4,6 +4,7 @@
     "dashboard": "Dashboard",
     "knowledgeBases": "Knowledge bases",
     "reviews": "Reviews",
+    "notifications": "Notifications",
     "search": "Search",
     "admin": "Admin",
     "profile": "Profile"
@@ -154,6 +155,18 @@
     "status_approved": "Approved",
     "status_rejected": "Rejected",
     "status_cancelled": "Cancelled"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "markRead": "Mark read",
+    "markAllRead": "Mark all read",
+    "unreadOnly": "Unread only",
+    "showAll": "Show all"
+  },
+  "activity": {
+    "title": "Organization activity",
+    "allActions": "All events",
+    "actor": "Actor"
   },
   "search": {
     "title": "Global search",

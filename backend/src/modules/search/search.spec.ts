@@ -105,7 +105,9 @@ function makeDeps(): Deps {
     versions as unknown as Model<ArticleVersion>,
     tags as unknown as Model<Tag>,
     cats as unknown as Model<Category>,
+    makeModelMock() as unknown as Model<import('../../common/mongo/schemas/workflow-history.schema').WorkflowHistory>,
     kbs as unknown as KnowledgeBasesService,
+    { write: jest.fn().mockResolvedValue(undefined) } as unknown as import('../audit-logs/audit-logs.service').AuditLogsService,
   );
   return { search: new SearchService(svc), articles, tags, kbs };
 }

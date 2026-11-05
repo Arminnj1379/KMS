@@ -108,6 +108,7 @@ describe('IdentityService', () => {
       sessions as unknown as Model<RefreshSession>,
       depts as unknown as Model<Department>,
       new JwtService({ secret: 'test' }),
+      { write: jest.fn().mockResolvedValue(undefined) } as unknown as import('../audit-logs/audit-logs.service').AuditLogsService,
     );
     mockHash.mockResolvedValue('hashed-pw');
   });
@@ -244,6 +245,7 @@ describe('IdentityService', () => {
       mockCompare.mockResolvedValue(true);
       users.updateOne.mockResolvedValue({});
       sessions.updateMany.mockResolvedValue({});
+      memberships.findOne.mockReturnValue(q(null));
 
       await svc.changePassword(U1, { currentPassword: 'Secret123', newPassword: 'NewSecret123' });
       expect(users.updateOne).toHaveBeenCalledWith(

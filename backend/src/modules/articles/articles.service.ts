@@ -11,9 +11,11 @@ import { Article } from '../../common/mongo/schemas/article.schema';
 import { ArticleVersion } from '../../common/mongo/schemas/article-version.schema';
 import { Category } from '../../common/mongo/schemas/category.schema';
 import { Tag } from '../../common/mongo/schemas/tag.schema';
+import { WorkflowHistory } from '../../common/mongo/schemas/workflow-history.schema';
 import { throwConflictIfDuplicate } from '../../common/mongo/mongo-errors';
 import { normalizeSlug, toObjectIdOrNull } from '../../common/mongo/object-id';
 import { withTransaction } from '../../common/mongo/transaction.helper';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import {
   KnowledgeBasesService,
   type KbAccess,
@@ -112,7 +114,9 @@ export class ArticlesService {
     @InjectModel(ArticleVersion.name) private readonly versionModel: Model<ArticleVersion>,
     @InjectModel(Tag.name) private readonly tagModel: Model<Tag>,
     @InjectModel(Category.name) private readonly categoryModel: Model<Category>,
+    @InjectModel(WorkflowHistory.name) private readonly historyModel: Model<WorkflowHistory>,
     private readonly kbs: KnowledgeBasesService,
+    private readonly audit: AuditLogsService,
   ) {}
 
   private assertWriter(access: KbAccess): void {
@@ -288,6 +292,14 @@ export class ArticlesService {
         deletedAt: null,
       });
       const lean = created.toObject() as unknown as ArticleLean;
+      await this.audit.write({
+        organizationId: orgId,
+        actorId: userId,
+        action: 'article.create',
+        resourceType: 'article',
+        resourceId: lean._id.toHexString(),
+        metadata: { title: lean.title, slug: lean.slug },
+      });
       return this.toDto(lean, await this.tagNamesById(lean.tagIds));
     } catch (error) {
       throwConflictIfDuplicate(error, 'شناسه مقاله در این پایگاه دانش تکراری است');
@@ -429,7 +441,17 @@ export class ArticlesService {
       }
       return next;
     });
-    if (updated) return this.toDto(updated, await this.tagNamesById(updated.tagIds));
+    if (updated) {
+      await this.audit.write({
+        organizationId: orgId,
+        actorId: userId,
+        action: 'article.update',
+        resourceType: 'article',
+        resourceId: updated._id.toHexString(),
+        metadata: dto.changelog ? { changelog: dto.changelog } : null,
+      });
+      return this.toDto(updated, await this.tagNamesById(updated.tagIds));
+    }
     const current = await this.findArticle(access.kbId, articleIdOrSlug);
     if (!current) throw new NotFoundException('مقاله یافت نشد');
     throw new ConflictException({
@@ -445,9 +467,18 @@ export class ArticlesService {
     const article = await this.findArticle(access.kbId, articleIdOrSlug);
     if (!article) throw new NotFoundException('مقاله یافت نشد');
     await this.articleModel.updateOne({ _id: article._id }, { $set: { deletedAt: new Date() } });
+    await this.audit.write({
+      organizationId: orgId,
+      actorId: userId,
+      action: 'article.delete',
+      resourceType: 'article',
+      resourceId: article._id.toHexString(),
+      metadata: { title: article.title },
+    });
   }
 
   private async transition(
+    orgId: string,
     access: KbAccess,
     actorId: string,
     articleIdOrSlug: string,
@@ -460,8 +491,9 @@ export class ArticlesService {
     if (!actorObjectId) throw new NotFoundException('کاربر یافت نشد');
     const article = await this.findArticle(access.kbId, articleIdOrSlug);
     if (!article) throw new NotFoundException('مقاله یافت نشد');
-    return withTransaction(this.connection, (tx) =>
-      this.flipStatusInSession({
+    const fromStatus = article.status;
+    const flipped = await withTransaction(this.connection, async (tx) => {
+      const next = await this.flipStatusInSession({
         kbId: access.kbId,
         articleId: article._id,
         expectedVersion: article.version,
@@ -470,8 +502,32 @@ export class ArticlesService {
         changelog,
         actorId: actorObjectId,
         session: tx,
-      }),
-    );
+      });
+      // Direct manager transitions bypass review rows — record the move in
+      // workflow_history so the timeline stays complete (Phase 6 debt).
+      await this.historyModel.create(
+        [
+          {
+            articleId: article._id,
+            fromStatus,
+            toStatus: to,
+            actorId: actorObjectId,
+            comment: changelog,
+          },
+        ],
+        { session: tx },
+      );
+      return next;
+    });
+    await this.audit.write({
+      organizationId: orgId,
+      actorId,
+      action: `article.${to}`,
+      resourceType: 'article',
+      resourceId: article._id.toHexString(),
+      metadata: { fromStatus, title: article.title },
+    });
+    return flipped;
   }
 
   /**
@@ -523,22 +579,22 @@ export class ArticlesService {
 
   async publish(orgId: string, userId: string, orgRole: string, kb: string, id: string) {
     const access = await this.kbs.requireAccess(orgId, userId, orgRole, kb);
-    return this.transition(access, userId, id, ['draft', 'in_review'], 'published', 'انتشار مقاله');
+    return this.transition(orgId, access, userId, id, ['draft', 'in_review'], 'published', 'انتشار مقاله');
   }
 
   async unpublish(orgId: string, userId: string, orgRole: string, kb: string, id: string) {
     const access = await this.kbs.requireAccess(orgId, userId, orgRole, kb);
-    return this.transition(access, userId, id, ['published'], 'draft', 'بازگردانی منتشرشده به پیش‌نویس');
+    return this.transition(orgId, access, userId, id, ['published'], 'draft', 'بازگردانی منتشرشده به پیش‌نویس');
   }
 
   async archive(orgId: string, userId: string, orgRole: string, kb: string, id: string) {
     const access = await this.kbs.requireAccess(orgId, userId, orgRole, kb);
-    return this.transition(access, userId, id, ['draft', 'in_review', 'published'], 'archived', 'بایگانی مقاله');
+    return this.transition(orgId, access, userId, id, ['draft', 'in_review', 'published'], 'archived', 'بایگانی مقاله');
   }
 
   async restore(orgId: string, userId: string, orgRole: string, kb: string, id: string) {
     const access = await this.kbs.requireAccess(orgId, userId, orgRole, kb);
-    return this.transition(access, userId, id, ['archived'], 'draft', 'بازیابی از بایگانی');
+    return this.transition(orgId, access, userId, id, ['archived'], 'draft', 'بازیابی از بایگانی');
   }
 
   async attachDocument(
@@ -564,6 +620,14 @@ export class ArticlesService {
       )
       .lean()) as unknown as ArticleLean | null;
     if (!updated) throw new NotFoundException('مقاله یافت نشد');
+    await this.audit.write({
+      organizationId: orgId,
+      actorId: userId,
+      action: 'article.attach',
+      resourceType: 'article',
+      resourceId: article._id.toHexString(),
+      metadata: { documentId: input.documentId.toHexString() },
+    });
     return this.toDto(updated, await this.tagNamesById(updated.tagIds));
   }
 
@@ -582,6 +646,14 @@ export class ArticlesService {
       throw new NotFoundException('پیوست یافت نشد');
     }
     await this.articleModel.updateOne({ _id: article._id }, { $pull: { attachments: { documentId: docObjectId } } });
+    await this.audit.write({
+      organizationId: orgId,
+      actorId: userId,
+      action: 'article.detach',
+      resourceType: 'article',
+      resourceId: article._id.toHexString(),
+      metadata: { documentId: docObjectId.toHexString() },
+    });
   }
 
   /** Raw attachment links (read permission). Enrichment lives in DocumentsService. */

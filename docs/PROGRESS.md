@@ -2,7 +2,7 @@
 
 > Updated after every phase (see task §10). Legend: ✅ done · 🟡 partial · ⬜ not started · 🛑 blocked.
 
-## Current: Phase 7 ✅ complete — next: Phase 8 Notifications & Audit
+## Current: Phase 8 ✅ complete — next: Phase 9 Polish & Prod-readiness
 
 | Phase | Status | Notes |
 |---|---|---|
@@ -15,7 +15,7 @@
 | 5 Documents & Versioning | ✅ | Backend: storage seam (s3/local) + documents intent/confirm + attachments + immutable versions + diff/restore. Frontend: attachments card + history card + changelog save. |
 | 6 Approval Workflow | ✅ | Backend: review state machine (submit/approve/reject/cancel) + history + notifications seam. Frontend: review inbox + article submit/banner/history. |
 | 7 Search | ✅ | Backend: `GET /search` ($text + regex fallback, KB/org-scoped) + globalSearch façade. Frontend: search page + filters + pagination. |
-| 8 Notifications & Audit | ⬜ | — |
+| 8 Notifications & Audit | ✅ | — |
 | 9 Polish & Prod-readiness | ⬜ | — |
 
 ## Phase 0 — completed work
@@ -104,6 +104,16 @@
   - `tsc --noEmit` clean (api+web); backend `eslint` clean; `nest build` + `vite build` pass (bundle ~740kB, code-split still deferred to Phase 9).
   - live smoke vs local Mongo + `STORAGE_DRIVER=local` (port 3001, 29 checks): ready / register / 2 KBs (internal+private) / 2 invites + 2 logins / 2 member adds / 3 published + 1 draft / exact-token keyword (mode=text) / affixed-token multi-hit / relevance ordering (two-term query ranks title-match first) / partial-token fallback (mode=regex) / single-hit isolation / status filter excludes draft / kbId filter / outsider sees internal-only (private hidden) / hit shape (kbTitle/kbSlug/snippet) / 1-char 400 / second-org register + cross-org empty. Harness-only fixes (PS5.1: BOM-less UTF-8 Persian misparse → BOM added; `write`-tool backslash-quote passthrough → stripped; stale identities → fresh prefix; smoke expectation corrected for exact-token `$text` semantics).
 - Debt: `$text` has no Persian stemmer — affixed forms (راهنما vs راهنمای) match only on exact token; fallback covers empty-`$text` cases but a non-empty text-hit short-circuits it (n-gram/edge-ngram index or query normalization is Phase 9 material). Snippet is a plain-text window (no `<mark>` highlights). Test data left in dev Mongo only (`p7*`/`p8*` orgs/users/KBs/articles). Next: Phase 8 Notifications & Audit.
+## Phase 8 — completed 2026-11-05 ✅
+- Backend `notifications` module (sink, owns `NOTIFICATIONS_PORT` per D-022/D-005/D-024): persisted `NotificationsService` (`notify()` drops invalid userIds with a warning, persists one unread row per call; `list` newest-first with `total`+`unread`, `unreadCount`, `markRead` own-row-only 404, `markAllRead`); `GET /notifications` (`?isRead`), `GET /notifications/unread-count`, `PATCH /notifications/:id/read`, `PATCH /notifications/read-all`. Phase 6 logging default + `common/notifications` module retired (port contract retained). Review callers unchanged (best-effort `safeNotify` post-commit).
+- Backend `audit-logs` module (sink, D-024): `AuditLogsService.write()` never throws (warn-and-swallow) and never runs inside request transactions — explicit post-success calls only, login's existing `meta.ip` is the only IP plumbing; `GET /audit-logs` (`Roles('org-admin')`, action/resourceType/actorId filters, newest-first, strictly org-scoped). Covered: `auth.*` (register/login/logout/change-password), `kb.*` (create/update/delete/member add/update/remove), `article.*` (create/update/delete/attach/detach/<to-status>), `review.*` (submitted/approved/rejected/cancelled).
+- Phase 6 debt closed: direct manager transitions (`ArticlesService.transition`) now write a `workflow_history` row in the same transaction (needs the `WorkflowHistory` model in `ArticlesService`) plus a post-commit audit row.
+- Frontend: `features/notifications` (api/hooks + `NotificationBell` with unread badge, 30s poll) + `/notifications` inbox page (unread filter, mark read/all, pagination) + nav entry; `features/audit` + admin `/activity` page (client-gated by membership role, server-enforced by `Roles`, action filter + pagination; linked from `/admin`); fa/en strings added.
+- Verification (all green, executed 2026-11-05):
+  - unit: **97/97** (9 new: notify-persist/drop-invalid, list scoping + unread, foreign-markRead 404, markAllRead, audit write/never-throws/org-scoped-newest-first; 5 spec construction sites updated for new ctor params + 1 changePassword audit stub).
+  - `tsc --noEmit` clean (api+web); backend `eslint` clean; `nest build` + `vite build` pass (bundle ~750kB, code-split still deferred to Phase 9).
+  - live smoke vs local Mongo + `STORAGE_DRIVER=local` (port 3001, 36 checks): ready / register / me / kb / invite + login / member-add / draft-create / submit→reviewer-inbox(1 unread, type) / unread-count-1 / mark-read / unread-count-0 / approve→admin-notified / read-all / admin-unread-0 / foreign-read-404 / no-token-401 / second-article + direct-publish + history-row-present / audit-200 with all 6 key actions / action-filter / reviewer-403 / audit-no-token-401 / second-org register + empty-inbox + audit-isolation. First-run green.
+- Debt: audit is warn-and-swallow by design (not billing-grade; monitor the service warning); inbox/notification titles snapshotted at emit time (may go stale on rename, same as review inbox); frontend bundle ~750kB (Tiptap; code-split deferred to Phase 9); `scripts/smoke-phase8.ps1` kept ASCII-only (PS5.1 BOM-less UTF-8 Persian misparse). Test data left in dev Mongo only (`p8*` orgs/users/KBs/articles/notifications/audits). Next: Phase 9 Polish & Prod-readiness.
 - [ ] Root: `docker-compose.yml`, `.env.example`, `.gitignore`, `README.md`, `package.json` (workspaces).
 - [ ] Backend scaffold + strict TS + lint + env + logging + filters + health + swagger + Prisma schema/seed.
 - [ ] Frontend scaffold + Tailwind + Router + Query + i18n + AppShell.

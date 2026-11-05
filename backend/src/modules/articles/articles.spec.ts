@@ -90,13 +90,17 @@ function makeDeps(role: string | null): Deps {
   const tags = makeModelMock();
   const cats = makeModelMock();
   const kbs = makeKbsMock(role);
+  const history = makeModelMock();
+  const audit = { write: jest.fn().mockResolvedValue(undefined) };
   const svc = new ArticlesService(
     makeTx(),
     articles as unknown as Model<Article>,
     versions as unknown as Model<ArticleVersion>,
     tags as unknown as Model<Tag>,
     cats as unknown as Model<Category>,
+    history as unknown as Model<import('../../common/mongo/schemas/workflow-history.schema').WorkflowHistory>,
     kbs,
+    audit as unknown as import('../audit-logs/audit-logs.service').AuditLogsService,
   );
   return { svc, kbs: kbs as unknown as { requireAccess: jest.Mock; requireManager: jest.Mock }, articles, versions, tags, cats };
 }

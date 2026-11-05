@@ -13,6 +13,7 @@ import { ReviewRequest } from '../../common/mongo/schemas/review-request.schema'
 import { WorkflowHistory } from '../../common/mongo/schemas/workflow-history.schema';
 import { toObjectIdOrNull } from '../../common/mongo/object-id';
 import { withTransaction } from '../../common/mongo/transaction.helper';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { ArticlesService } from '../articles/articles.service';
 import { KnowledgeBasesService, type KbAccess } from '../knowledge-bases/knowledge-bases.service';
 import { PermissionsService } from '../permissions/permissions.service';
@@ -70,6 +71,7 @@ export class ApprovalWorkflowService {
     private readonly kbs: KnowledgeBasesService,
     private readonly permissions: PermissionsService,
     @Inject(NOTIFICATIONS_PORT) private readonly notifications: NotificationsPort,
+    private readonly audit: AuditLogsService,
   ) {}
 
   private toDto(r: ReviewLean) {
@@ -198,6 +200,14 @@ export class ApprovalWorkflowService {
       body: comment ?? undefined,
       data: { reviewRequestId: created.row._id.toHexString(), articleId: article._id.toHexString(), kbSlug: kb.slug },
     });
+    await this.audit.write({
+      organizationId: orgId,
+      actorId: userId,
+      action: 'review.submitted',
+      resourceType: 'review-request',
+      resourceId: created.row._id.toHexString(),
+      metadata: { articleId: article._id.toHexString(), articleTitle: article.title },
+    });
     return { article: created.flipped, reviewRequest: this.toDto(created.row) };
   }
 
@@ -289,6 +299,14 @@ export class ApprovalWorkflowService {
       body: comment ?? undefined,
       data: { reviewRequestId: request._id.toHexString(), articleId: request.articleId.toHexString() },
     });
+    await this.audit.write({
+      organizationId: orgId,
+      actorId: userId,
+      action: action === 'approve' ? 'review.approved' : 'review.rejected',
+      resourceType: 'review-request',
+      resourceId: request._id.toHexString(),
+      metadata: { articleId: request.articleId.toHexString(), articleTitle: request.articleTitle },
+    });
     return { article: decided.flipped, reviewRequest: this.toDto(decided.next) };
   }
 
@@ -342,6 +360,14 @@ export class ApprovalWorkflowService {
       type: 'review.cancelled',
       title: `درخواست بررسی لغو شد: ${request.articleTitle}`,
       data: { reviewRequestId: request._id.toHexString(), articleId: request.articleId.toHexString() },
+    });
+    await this.audit.write({
+      organizationId: orgId,
+      actorId: userId,
+      action: 'review.cancelled',
+      resourceType: 'review-request',
+      resourceId: request._id.toHexString(),
+      metadata: { articleId: request.articleId.toHexString(), articleTitle: request.articleTitle },
     });
     return { article: cancelled.flipped, reviewRequest: this.toDto(cancelled.next) };
   }

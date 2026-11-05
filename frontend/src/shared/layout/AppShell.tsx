@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { t } from '../../i18n';
+import { NotificationBell } from '../../features/notifications/NotificationBell';
 import { cn } from '../../shared/lib/cn';
 
 function navClass(active: boolean): string {
@@ -45,6 +46,9 @@ export function AppShell({ children }: { children?: ReactNode }): JSX.Element {
             <NavLink to="/reviews" className={({ isActive }) => navClass(isActive)}>
               {t('nav.reviews')}
             </NavLink>
+            <NavLink to="/notifications" className={({ isActive }) => navClass(isActive)}>
+              {t('nav.notifications')}
+            </NavLink>
             <NavLink to="/search" className={({ isActive }) => navClass(isActive)}>
               {t('nav.search')}
             </NavLink>
@@ -56,6 +60,7 @@ export function AppShell({ children }: { children?: ReactNode }): JSX.Element {
             </NavLink>
           </nav>
           <div className="ms-auto flex items-center gap-2">
+            <NotificationBell />
             <button
               type="button"
               onClick={toggleTheme}

@@ -94,6 +94,7 @@ function makeDeps(): Deps {
     articleVersions as unknown as Model<ArticleVersion>,
     users as unknown as Model<User>,
     memberships as unknown as Model<Membership>,
+    { write: jest.fn().mockResolvedValue(undefined) } as unknown as import('../audit-logs/audit-logs.service').AuditLogsService,
   );
   const cats = new CategoriesService(
     makeTx(),

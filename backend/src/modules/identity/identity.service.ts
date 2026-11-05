@@ -13,6 +13,7 @@ import type { AuthTokens, AuthenticatedUser, OrgRole } from '../../common/auth/t
 import { throwConflictIfDuplicate } from '../../common/mongo/mongo-errors';
 import { normalizeEmail, toObjectIdOrNull } from '../../common/mongo/object-id';
 import { withTransaction } from '../../common/mongo/transaction.helper';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { Department } from '../../common/mongo/schemas/department.schema';
 import { Membership } from '../../common/mongo/schemas/membership.schema';
 import { Organization } from '../../common/mongo/schemas/organization.schema';
@@ -89,6 +90,7 @@ export class IdentityService {
     @InjectModel(RefreshSession.name) private readonly sessionModel: Model<RefreshSession>,
     @InjectModel(Department.name) private readonly departmentModel: Model<Department>,
     private readonly jwt: JwtService,
+    private readonly audit: AuditLogsService,
   ) {}
 
   private signAccess(user: AuthenticatedUser): Promise<string> {
@@ -162,6 +164,14 @@ export class IdentityService {
         orgId: organization._id.toHexString(),
         orgRole: 'org-admin',
       };
+      await this.audit.write({
+        organizationId: organization._id.toHexString(),
+        actorId: user._id.toHexString(),
+        action: 'auth.register',
+        resourceType: 'organization',
+        resourceId: organization._id.toHexString(),
+        metadata: { email: user.email },
+      });
       return {
         accessToken: await this.signAccess(identity),
         refreshToken: created.refreshToken,
@@ -213,6 +223,15 @@ export class IdentityService {
       orgId: organization._id.toHexString(),
       orgRole: membership.role as OrgRole,
     };
+    await this.audit.write({
+      organizationId: organization._id.toHexString(),
+      actorId: user._id.toHexString(),
+      action: 'auth.login',
+      resourceType: 'user',
+      resourceId: user._id.toHexString(),
+      metadata: null,
+      ip: meta.ip ?? null,
+    });
     return {
       accessToken: await this.signAccess(identity),
       refreshToken: session.refreshToken,
@@ -266,10 +285,25 @@ export class IdentityService {
   }
 
   async logout(dto: RefreshDto): Promise<void> {
+    const session = await this.sessionModel.findOne({ refreshHash: sha256(dto.refreshToken) }).lean();
     await this.sessionModel.updateMany(
       { refreshHash: sha256(dto.refreshToken), revokedAt: null },
       { revokedAt: new Date() },
     );
+    if (session) {
+      const membership = await this.membershipModel
+        .findOne({ userId: session.userId })
+        .sort({ createdAt: 1 })
+        .lean();
+      await this.audit.write({
+        organizationId: membership ? membership.organizationId.toHexString() : null,
+        actorId: session.userId.toHexString(),
+        action: 'auth.logout',
+        resourceType: 'user',
+        resourceId: session.userId.toHexString(),
+        metadata: null,
+      });
+    }
   }
 
   async me(userId: string) {
@@ -321,6 +355,18 @@ export class IdentityService {
         { revokedAt: new Date() },
         { session: tx },
       );
+    });
+    const membership = await this.membershipModel
+      .findOne({ userId: user._id })
+      .sort({ createdAt: 1 })
+      .lean();
+    await this.audit.write({
+      organizationId: membership ? membership.organizationId.toHexString() : null,
+      actorId: user._id.toHexString(),
+      action: 'auth.change-password',
+      resourceType: 'user',
+      resourceId: user._id.toHexString(),
+      metadata: null,
     });
   }
 

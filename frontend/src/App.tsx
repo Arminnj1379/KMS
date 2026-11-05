@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { RequireAuth } from './features/auth/RequireAuth';
 import { createQueryClient } from './app/query-client';
+import { ActivityPage } from './pages/ActivityPage';
 import { AdminPage } from './pages/AdminPage';
 import { ArticleEditorPage } from './pages/ArticleEditorPage';
 import { ArticleListPage } from './pages/ArticleListPage';
@@ -10,6 +11,7 @@ import { ArticleViewPage } from './pages/ArticleViewPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { KbDetailPage } from './pages/KbDetailPage';
 import { KbListPage } from './pages/KbListPage';
+import { NotificationsPage } from './pages/NotificationsPage';
 import { LoginPage } from './pages/LoginPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { ProfilePage } from './pages/ProfilePage';
@@ -36,6 +38,8 @@ export default function App(): JSX.Element {
               <Route path="/kbs/:kbId/articles/:articleId" element={<ArticleViewPage />} />
               <Route path="/kbs/:kbId/articles/:articleId/edit" element={<ArticleEditorPage />} />
               <Route path="/reviews" element={<ReviewInboxPage />} />
+              <Route path="/notifications" element={<NotificationsPage />} />
+              <Route path="/activity" element={<ActivityPage />} />
               <Route path="/search" element={<SearchPage />} />
               <Route path="/profile" element={<ProfilePage />} />
               <Route path="/admin" element={<AdminPage />} />

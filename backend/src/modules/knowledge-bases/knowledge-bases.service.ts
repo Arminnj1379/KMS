@@ -17,6 +17,7 @@ import { User } from '../../common/mongo/schemas/user.schema';
 import { throwConflictIfDuplicate } from '../../common/mongo/mongo-errors';
 import { normalizeEmail, normalizeSlug, toObjectIdOrNull } from '../../common/mongo/object-id';
 import { withTransaction } from '../../common/mongo/transaction.helper';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import {
   AddKbMemberDto,
   CreateKnowledgeBaseDto,
@@ -50,6 +51,7 @@ export class KnowledgeBasesService {
     @InjectModel(ArticleVersion.name) private readonly articleVersionModel: Model<ArticleVersion>,
     @InjectModel(User.name) private readonly userModel: Model<User>,
     @InjectModel(Membership.name) private readonly membershipModel: Model<Membership>,
+    private readonly audit: AuditLogsService,
   ) {}
 
   /** Finds the KB by id-or-slug within the org; null when absent. */
@@ -209,6 +211,14 @@ export class KnowledgeBasesService {
       });
       const kb = await this.kbModel.findById(kbId).lean();
       if (!kb) throw new NotFoundException('پایگاه دانش یافت نشد');
+      await this.audit.write({
+        organizationId: orgId,
+        actorId: ownerId,
+        action: 'kb.create',
+        resourceType: 'knowledge-base',
+        resourceId: kb._id.toHexString(),
+        metadata: { title: kb.title, slug: kb.slug },
+      });
       return { ...(await this.kbDto(kb)), role: 'manager' as KbRole };
     } catch (error) {
       if (error instanceof NotFoundException || error instanceof ConflictException) throw error;
@@ -259,6 +269,14 @@ export class KnowledgeBasesService {
       )
       .lean();
     if (!kb) throw new NotFoundException('پایگاه دانش یافت نشد');
+    await this.audit.write({
+      organizationId: orgId,
+      actorId: userId,
+      action: 'kb.update',
+      resourceType: 'knowledge-base',
+      resourceId: kb._id.toHexString(),
+      metadata: { title: kb.title },
+    });
     return { ...(await this.kbDto(kb)), role: access.role };
   }
 
@@ -285,6 +303,14 @@ export class KnowledgeBasesService {
       await this.kbMemberModel.deleteMany({ knowledgeBaseId: access.kbId }, { session: tx });
       await this.categoryModel.deleteMany({ knowledgeBaseId: access.kbId }, { session: tx });
       await this.kbModel.deleteOne({ _id: access.kbId }, { session: tx });
+    });
+    await this.audit.write({
+      organizationId: orgId,
+      actorId: userId,
+      action: 'kb.delete',
+      resourceType: 'knowledge-base',
+      resourceId: access.kbId.toHexString(),
+      metadata: null,
     });
   }
 
@@ -331,6 +357,14 @@ export class KnowledgeBasesService {
         userId: user._id,
         role: dto.role,
       });
+      await this.audit.write({
+        organizationId: orgId,
+        actorId: userId,
+        action: 'kb.member.add',
+        resourceType: 'knowledge-base',
+        resourceId: access.kbId.toHexString(),
+        metadata: { memberId: user._id.toHexString(), role: dto.role },
+      });
       return {
         userId: user._id.toHexString(),
         email: user.email,
@@ -363,6 +397,14 @@ export class KnowledgeBasesService {
       )
       .lean();
     if (!updated) throw new NotFoundException('عضو یافت نشد');
+    await this.audit.write({
+      organizationId: orgId,
+      actorId: userId,
+      action: 'kb.member.update',
+      resourceType: 'knowledge-base',
+      resourceId: access.kbId.toHexString(),
+      metadata: { memberId: targetId, role: dto.role },
+    });
     return { userId: targetId, role: updated.role };
   }
 
@@ -376,5 +418,13 @@ export class KnowledgeBasesService {
       userId: targetObjectId,
     });
     if (!removed) throw new NotFoundException('عضو یافت نشد');
+    await this.audit.write({
+      organizationId: orgId,
+      actorId: userId,
+      action: 'kb.member.remove',
+      resourceType: 'knowledge-base',
+      resourceId: access.kbId.toHexString(),
+      metadata: { memberId: targetId },
+    });
   }
 }

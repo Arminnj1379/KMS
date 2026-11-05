@@ -130,6 +130,7 @@ function makeDeps(): Deps {
   };
   const permissions = { membership: jest.fn().mockResolvedValue({ role: 'member' }) };
   const notifications = { notify: jest.fn().mockResolvedValue(undefined) };
+  const audit = { write: jest.fn().mockResolvedValue(undefined) };
   const svc = new ApprovalWorkflowService(
     makeTx(),
     reviews as unknown as Model<ReviewRequest>,
@@ -138,6 +139,7 @@ function makeDeps(): Deps {
     kbs as unknown as KnowledgeBasesService,
     permissions as unknown as PermissionsService,
     notifications as unknown as NotificationsPort,
+    audit as unknown as import('../audit-logs/audit-logs.service').AuditLogsService,
   );
   return { svc, reviews, history, articles, kbs, permissions, notifications };
 }

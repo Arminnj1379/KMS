@@ -109,7 +109,12 @@ published ──unpublish──► draft (kb-manager+)
 any ──archive──► archived (kb-manager+; read-only thereafter except restore-to-draft)
 ```
 
-Enforced in `ApprovalWorkflowService` — single choke point, invalid transitions throw `UnprocessableEntity`. Every review-driven transition flips the article, snapshots, and writes the review row + a `workflow_history` row in ONE transaction, then notifies via the seam (D-022). `audit_logs` writes and history rows for direct manager transitions (publish/unpublish/…) are deferred to Phase 8 (documented debt, not silent).
+Enforced in `ApprovalWorkflowService` — single choke point, invalid transitions throw `UnprocessableEntity`. Every review-driven transition flips the article, snapshots, and writes the review row + a `workflow_history` row in ONE transaction, then notifies via the seam (D-022) and audits post-commit. Direct manager transitions (`ArticlesService.transition`) write their own `workflow_history` row in the same transaction (Phase 8 closed the Phase 6 debt) plus a post-commit audit row.
+
+## 7b. Notifications & Audit (Phase 8)
+
+- Notifications: `modules/notifications` owns the `NOTIFICATIONS_PORT` provider (persisted `NotificationsService`; the Phase 6 logging default is retired, the port contract in `common/notifications` is retained). Callers still fire best-effort post-commit hooks (`safeNotify` — failures logged, never fail the request). Inbox API: `GET /notifications` (own rows, `?isRead`, newest-first, returns `total` + `unread`), `GET /notifications/unread-count` (header bell, 30s poll), `PATCH /notifications/:id/read`, `PATCH /notifications/read-all`. Later BullMQ fan-out reuses the same token.
+- Audit: `modules/audit-logs` owns the append-only `audit_logs` writer + org-admin query (`GET /audit-logs`, `Roles('org-admin')`, action/resourceType/actorId filters, newest-first). `AuditLogsService.write()` is an explicit post-success hook: it never throws (warn-and-swallow) and never runs inside a request transaction, so audit outages can't fail the request. Covered actions: `auth.*` (register/login with IP/logout/change-password), `kb.*` (create/update/delete/member add/update/remove), `article.*` (create/update/delete/attach/detach/<to-status>), `review.*` (submitted/approved/rejected/cancelled). Frontend: header `NotificationBell` + `/notifications` inbox page + admin `/activity` page (gated by membership role client-side, enforced by `Roles` server-side).
 
 ## 8. Storage & Files
 

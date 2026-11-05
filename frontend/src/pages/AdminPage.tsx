@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { t } from '../i18n';
 import { toApiMessage } from '../shared/lib/api-client';
 import { useInviteUser, useMe, useUpdateUser, useUsers } from '../features/auth/hooks';
@@ -31,6 +32,15 @@ export function AdminPage(): JSX.Element {
 
       {isAdmin && (
         <>
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold">{t('activity.title')}</h2>
+              <Link to="/activity" className="text-sm font-medium text-brand-600 hover:underline">
+                {t('activity.title')} ←
+              </Link>
+            </div>
+          </div>
+
           <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
             <h2 className="text-sm font-semibold">{t('admin.invite')}</h2>
             <form onSubmit={(e) => void onInvite(e)} className="mt-4 grid gap-3 sm:grid-cols-2">

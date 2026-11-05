@@ -13,6 +13,8 @@ import { ArticlesModule } from './modules/articles/articles.module';
 import { ArticleVersionsModule } from './modules/article-versions/article-versions.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { ApprovalWorkflowModule } from './modules/approval-workflow/approval-workflow.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
+import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 import { SearchModule } from './modules/search/search.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
 import { PermissionsModule } from './modules/permissions/permissions.module';
@@ -21,7 +23,7 @@ import { UsersModule } from './modules/users/users.module';
 /**
  * Root wiring only. Module dependency direction (AGENTS.md §2):
  * approval → articles → knowledge-bases → organizations → users → identity;
- * search → articles (façade); permissions/notifications are sinks.
+ * search → articles (façade); permissions/notifications/audit-logs are sinks.
  * identity stands alone (bootstrap). common/ never imports from modules/.
  * Persistence: global MongoModule (Mongoose) replaces PrismaModule.
  */
@@ -51,6 +53,8 @@ import { UsersModule } from './modules/users/users.module';
     DocumentsModule,
     ApprovalWorkflowModule,
     SearchModule,
+    NotificationsModule,
+    AuditLogsModule,
     HealthModule,
   ],
   providers: [
