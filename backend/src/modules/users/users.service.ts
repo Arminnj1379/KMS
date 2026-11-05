@@ -257,8 +257,29 @@ export class UsersService {
   }
 
   private async toRows(members: MembershipLean[]): Promise<OrgUserRow[]> {
+    if (members.length === 0) return [];
+    const userIds = [...new Set(members.map((m) => m.userId.toHexString()))].map((h) => new Types.ObjectId(h));
+    const deptIds = [...new Set(members.map((m) => m.departmentId?.toHexString()).filter((h): h is string => Boolean(h)))].map(
+      (h) => new Types.ObjectId(h),
+    );
+    const [users, departments] = await Promise.all([
+      this.userModel.find({ _id: { $in: userIds } }).lean(),
+      deptIds.length === 0 ? Promise.resolve([]) : this.departmentModel.find({ _id: { $in: deptIds } }).lean(),
+    ]);
+    const userById = new Map(users.map((u) => [u._id.toHexString(), u]));
+    const deptById = new Map(departments.map((d) => [d._id.toHexString(), d]));
     const rows: OrgUserRow[] = [];
-    for (const m of members) rows.push(await this.toRow(m));
+    for (const m of members) {
+      const user = userById.get(m.userId.toHexString());
+      if (!user) continue;
+      const department = m.departmentId ? deptById.get(m.departmentId.toHexString()) ?? null : null;
+      rows.push({
+        user: safe(user),
+        role: m.role,
+        department: department ? { id: department._id.toHexString(), name: department.name } : null,
+        memberSince: m.createdAt,
+      });
+    }
     return rows;
   }
 

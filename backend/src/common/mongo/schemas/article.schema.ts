@@ -88,6 +88,7 @@ export class Article {
 export const ArticleSchema = SchemaFactory.createForClass(Article);
 ArticleSchema.index({ knowledgeBaseId: 1, slug: 1 }, { unique: true });
 ArticleSchema.index({ knowledgeBaseId: 1, status: 1, publishedAt: -1 });
+ArticleSchema.index({ knowledgeBaseId: 1, deletedAt: 1, status: 1 });
 ArticleSchema.index({ organizationId: 1, status: 1, publishedAt: -1 });
 ArticleSchema.index({ authorId: 1 });
 ArticleSchema.index({ tagIds: 1 });

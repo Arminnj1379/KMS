@@ -237,11 +237,39 @@ export class KnowledgeBasesService {
       ? []
       : await this.kbMemberModel.find({ userId: userObjectId }).lean();
     const roleByKb = new Map(memberships.map((m) => [m.knowledgeBaseId.toHexString(), m.role as KbRoleName]));
+    const kbIds = kbs.map((k) => k._id);
+    const [memberCounts, categoryCounts] = kbIds.length === 0
+      ? [[], []]
+      : await Promise.all([
+          this.kbMemberModel.aggregate<{ _id: Types.ObjectId; n: number }>([
+            { $match: { knowledgeBaseId: { $in: kbIds } } },
+            { $group: { _id: '$knowledgeBaseId', n: { $sum: 1 } } },
+          ]),
+          this.categoryModel.aggregate<{ _id: Types.ObjectId; n: number }>([
+            { $match: { knowledgeBaseId: { $in: kbIds } } },
+            { $group: { _id: '$knowledgeBaseId', n: { $sum: 1 } } },
+          ]),
+        ]);
+    const memberCountByKb = new Map(memberCounts.map((r) => [r._id.toHexString(), r.n]));
+    const categoryCountByKb = new Map(categoryCounts.map((r) => [r._id.toHexString(), r.n]));
     const rows = [];
     for (const kb of kbs) {
       const role = isOrgAdmin ? ('org-admin' as const) : roleByKb.get(kb._id.toHexString()) ?? null;
       if (!isOrgAdmin && role === null && kb.visibility === 'private') continue;
-      rows.push({ ...(await this.kbDto(kb)), role });
+      rows.push({
+        id: kb._id.toHexString(),
+        title: kb.title,
+        slug: kb.slug,
+        description: kb.description,
+        icon: kb.icon,
+        visibility: kb.visibility,
+        ownerId: kb.ownerId.toHexString(),
+        memberCount: memberCountByKb.get(kb._id.toHexString()) ?? 0,
+        categoryCount: categoryCountByKb.get(kb._id.toHexString()) ?? 0,
+        createdAt: kb.createdAt,
+        updatedAt: kb.updatedAt,
+        role,
+      });
     }
     return rows;
   }
@@ -319,9 +347,12 @@ export class KnowledgeBasesService {
   async listMembers(orgId: string, userId: string, orgRole: string, kbIdOrSlug: string) {
     const access = await this.requireAccess(orgId, userId, orgRole, kbIdOrSlug);
     const rows = await this.kbMemberModel.find({ knowledgeBaseId: access.kbId }).sort({ createdAt: 1 }).lean();
+    const userIds = [...new Set(rows.map((m) => m.userId.toHexString()))].map((h) => new Types.ObjectId(h));
+    const users = userIds.length === 0 ? [] : await this.userModel.find({ _id: { $in: userIds } }).lean();
+    const byId = new Map(users.map((u) => [u._id.toHexString(), u]));
     const result = [];
     for (const m of rows) {
-      const user = await this.userModel.findById(m.userId).lean();
+      const user = byId.get(m.userId.toHexString());
       if (!user) continue;
       result.push({
         userId: user._id.toHexString(),
