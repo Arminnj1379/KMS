@@ -1,4 +1,4 @@
-import type { InputHTMLAttributes, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react';
+import { forwardRef, type InputHTMLAttributes, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
 import { cn } from '../lib/cn';
 
 export function Field({
@@ -21,21 +21,29 @@ export function Field({
   );
 }
 
-export function TextInput(props: InputHTMLAttributes<HTMLInputElement>): JSX.Element {
+export const TextInput = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function TextInput(
+  props,
+  ref,
+) {
   const { className, ...rest } = props;
-  return <input {...rest} className={cn('input', props['aria-invalid'] && 'input-error', className)} />;
-}
+  return <input ref={ref} {...rest} className={cn('input', props['aria-invalid'] && 'input-error', className)} />;
+});
 
-export function Textarea(props: TextareaHTMLAttributes<HTMLTextAreaElement>): JSX.Element {
-  const { className, ...rest } = props;
-  return <textarea {...rest} className={cn('input', className)} />;
-}
+export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(
+  function Textarea(props, ref) {
+    const { className, ...rest } = props;
+    return <textarea ref={ref} {...rest} className={cn('input', className)} />;
+  },
+);
 
-export function Select(props: SelectHTMLAttributes<HTMLSelectElement>): JSX.Element {
+export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(function Select(
+  props,
+  ref,
+) {
   const { className, children, ...rest } = props;
   return (
-    <select {...rest} className={cn('input', className)}>
+    <select ref={ref} {...rest} className={cn('input', className)}>
       {children}
     </select>
   );
-}
+});
