@@ -82,7 +82,7 @@ services:
       MONGODB_URI: mongodb://mongo:27017/${MONGO_DB:-kms}?replicaSet=rs0&directConnection=true
       API_PORT: "3000"
       API_PREFIX: ${API_PREFIX:-api}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,https://andc.kms.ir}
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-change-me-access-min-32-chars-long-secret}
       S3_ENDPOINT: http://minio:9000
       S3_REGION: ${S3_REGION:-us-east-1}
@@ -97,13 +97,28 @@ services:
     build:
       context: ./frontend
       args:
-        VITE_API_URL: ${VITE_API_URL:-http://localhost:3000/api}
+        VITE_API_URL: ${VITE_API_URL:-/api}
     restart: unless-stopped
     depends_on:
       - api
     ports:
       - "5173:80"
 
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - web
+
 volumes:
   mongodata:
   minio-data:
+  caddy-data:
+  caddy-config:

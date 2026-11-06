@@ -1,0 +1,4 @@
+andc.kms.ir {
+    reverse_proxy web:80
+    encode gzip
+}
