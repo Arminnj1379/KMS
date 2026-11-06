@@ -1,4 +1,6 @@
-andc.kms.ir {
+# HTTP-only: works without public DNS / Let's Encrypt.
+# To enable HTTPS later, change to "andc.kms.ir" and add DNS + (optionally) tls internal.
+http://andc.kms.ir, :80 {
     reverse_proxy web:80
     encode gzip
 }
